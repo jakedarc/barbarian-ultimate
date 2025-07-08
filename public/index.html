@@ -304,6 +304,49 @@
             font-size: 14px;
         }
 
+        .resume-indicator {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(51, 65, 85, 0.9));
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(100, 181, 246, 0.3);
+            color: #e2e8f0;
+            font-size: 12px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            margin-top: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            font-family: "JetBrains Mono", monospace;
+        }
+
+        .resume-indicator::before {
+            content: "⏸";
+            color: #64b5f6;
+            font-size: 14px;
+        }
+
+        .start-over-btn {
+            background: rgba(68, 68, 68, 0.9);
+            color: #64b5f6;
+            border: 1px solid rgba(100, 181, 246, 0.4);
+            padding: 8px 16px;
+            margin-left: 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-block;
+            vertical-align: middle;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .start-over-btn:hover {
+            background: rgba(100, 181, 246, 0.2);
+            transform: translateY(-1px);
+        }
+
         /* Loading State */
         .loading {
             text-align: center;
@@ -442,6 +485,103 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
     <script>
+        // Video Position Saving Configuration
+        const VIDEO_POSITION_CONFIG = {
+            saveInterval: 10, // Save position every 10 seconds
+            minSaveTime: 30, // Don't save positions for first 30 seconds
+            expireDays: 30, // Clear saved positions older than 30 days
+            resumeThreshold: 60 // Only resume if more than 60 seconds from start
+        };
+
+        // Clean up old saved positions
+        function cleanupOldPositions() {
+            const now = Date.now();
+            const expireTime = VIDEO_POSITION_CONFIG.expireDays * 24 * 60 * 60 * 1000;
+            
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('video_position_')) {
+                    try {
+                        const data = JSON.parse(localStorage.getItem(key));
+                        if (data.timestamp && (now - data.timestamp > expireTime)) {
+                            localStorage.removeItem(key);
+                        }
+                    } catch (e) {
+                        localStorage.removeItem(key);
+                    }
+                }
+            });
+        }
+
+        // Save video position
+        function saveVideoPosition(videoId, currentTime, duration) {
+            if (currentTime < VIDEO_POSITION_CONFIG.minSaveTime) return;
+            if (currentTime > duration - 30) return; // Don't save if near the end
+            
+            const positionData = {
+                time: currentTime,
+                duration: duration,
+                timestamp: Date.now()
+            };
+            
+            localStorage.setItem(`video_position_${videoId}`, JSON.stringify(positionData));
+        }
+
+        // Get saved video position
+        function getSavedVideoPosition(videoId) {
+            try {
+                const data = localStorage.getItem(`video_position_${videoId}`);
+                return data ? JSON.parse(data) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Clear saved position for a video
+        function clearVideoPosition(videoId) {
+            localStorage.removeItem(`video_position_${videoId}`);
+        }
+
+        // Format time for display
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hours > 0) {
+                return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }
+            return `${minutes}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Auto-resume video without prompt
+        function autoResumeVideo(player, savedTime) {
+            console.log(`Setting up auto-resume to ${formatTime(savedTime)}`);
+            
+            // Wait for user to press play
+            const onFirstPlay = () => {
+                console.log('User pressed play, now seeking to saved position');
+                player.off('play', onFirstPlay);
+                
+                // Pause immediately to seek
+                player.pause();
+                
+                const onSeeked = () => {
+                    console.log('Resume seek completed, resuming playback');
+                    player.isResuming = false;
+                    player.off('seeked', onSeeked);
+                    player.play(); // Resume playback after seeking
+                };
+                
+                player.isResuming = true;
+                player.on('seeked', onSeeked);
+                player.currentTime(savedTime);
+            };
+            
+            player.isResuming = true; // Set flag to prevent other interference
+            player.on('play', onFirstPlay);
+            console.log('Auto-resume will trigger on first play');
+        }
+
         class VODArchive {
             constructor() {
                 this.videos = [];
@@ -450,8 +590,13 @@
                 this.itemsPerPage = 25;
                 this.currentVideo = null;
                 this.player = null;
+                this.saveTimer = null;
+                this.hasResumed = false;
+                this.shouldResume = false;
+                this.startOverBtn = null;
                 
                 this.init();
+                cleanupOldPositions();
             }
 
             async init() {
@@ -688,6 +833,14 @@
                 if (!video) return;
 
                 this.currentVideo = video;
+                this.hasResumed = false;
+                this.shouldResume = false;
+
+                // Clear existing timer
+                if (this.saveTimer) {
+                    clearInterval(this.saveTimer);
+                    this.saveTimer = null;
+                }
 
                 // Update URL
                 history.pushState({ videoId }, video.title, `#${videoId}`);
@@ -715,6 +868,9 @@
                 if (existingPlayer) {
                     existingPlayer.dispose();
                 }
+
+                // Remove start over button
+                this.removeStartOverButton();
 
                 // Show video container and hide placeholder
                 const placeholder = document.getElementById('videoPlaceholder');
@@ -749,6 +905,8 @@
                     aspectRatio: '16:9'
                 });
 
+                this.setupVideoPositionTracking(videoId);
+
                 this.player.ready(() => {
                     console.log('Player ready, loading video...');
                     this.player.src({
@@ -759,6 +917,127 @@
 
                 // Scroll to video
                 document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
+            }
+
+            setupVideoPositionTracking(videoId) {
+                const player = this.player;
+                
+                // Create start over button if there's a saved position
+                const createStartOverButton = () => {
+                    const savedPosition = getSavedVideoPosition(videoId);
+                    if (!savedPosition || savedPosition.time <= VIDEO_POSITION_CONFIG.resumeThreshold) return;
+                    
+                    // Find the title element
+                    const titleElement = document.getElementById('videoTitle');
+                    if (!titleElement || this.startOverBtn) return;
+                    
+                    this.startOverBtn = document.createElement('button');
+                    this.startOverBtn.textContent = `Start Over (was at ${formatTime(savedPosition.time)})`;
+                    this.startOverBtn.className = 'start-over-btn';
+                    
+                    this.startOverBtn.addEventListener('click', () => {
+                        clearVideoPosition(videoId);
+                        player.currentTime(0);
+                        player.pause();
+                        this.removeStartOverButton();
+                        this.renderVideos(); // Refresh the video list to remove resume indicators
+                    });
+                    
+                    // Add it to the title element
+                    titleElement.appendChild(this.startOverBtn);
+                };
+
+                // Save position periodically
+                const savePosition = () => {
+                    if (player.isResuming) return;
+                    
+                    const currentTime = player.currentTime();
+                    const duration = player.duration();
+                    
+                    if (currentTime && duration && !isNaN(currentTime) && !isNaN(duration)) {
+                        saveVideoPosition(videoId, currentTime, duration);
+                    }
+                };
+
+                // Start/stop periodic saving
+                const startSaving = () => {
+                    if (this.saveTimer) clearInterval(this.saveTimer);
+                    this.saveTimer = setInterval(savePosition, VIDEO_POSITION_CONFIG.saveInterval * 1000);
+                };
+
+                const stopSaving = () => {
+                    if (this.saveTimer) {
+                        clearInterval(this.saveTimer);
+                        this.saveTimer = null;
+                    }
+                };
+
+                // Check for saved position and auto-resume
+                const checkSavedPosition = () => {
+                    if (this.hasResumed || player.isResuming) return;
+                    
+                    const savedPosition = getSavedVideoPosition(videoId);
+                    if (savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold) {
+                        this.shouldResume = true;
+                        this.hasResumed = true;
+                        autoResumeVideo(player, savedPosition.time);
+                    }
+                };
+
+                // Event listeners
+                player.on('loadedmetadata', () => {
+                    setTimeout(() => {
+                        checkSavedPosition();
+                        createStartOverButton();
+                    }, 100);
+                });
+
+                player.on('play', () => {
+                    if (this.shouldResume && !this.hasResumed) {
+                        player.pause();
+                        checkSavedPosition();
+                        return;
+                    }
+                    
+                    if (!player.isResuming) {
+                        startSaving();
+                    }
+                });
+
+                player.on('pause', () => {
+                    if (!player.isResuming) {
+                        savePosition();
+                    }
+                });
+
+                player.on('seeked', () => {
+                    if (!player.isResuming) {
+                        savePosition();
+                    }
+                });
+
+                player.on('ended', () => {
+                    stopSaving();
+                    clearVideoPosition(videoId);
+                    this.removeStartOverButton();
+                    this.renderVideos(); // Refresh the video list to remove resume indicators
+                });
+
+                window.addEventListener('beforeunload', savePosition);
+
+                if (player.readyState() >= 1) {
+                    setTimeout(() => {
+                        checkSavedPosition();
+                        createStartOverButton();
+                    }, 100);
+                }
+            }
+
+            removeStartOverButton() {
+                if (this.startOverBtn) {
+                    this.startOverBtn.remove();
+                    this.startOverBtn = null;
+                }
             }
 
             checkURLForVideo() {
