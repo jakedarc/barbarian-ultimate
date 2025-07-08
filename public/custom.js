@@ -585,6 +585,9 @@ class VODArchive {
     setupVideoPositionTracking(videoId) {
         const player = this.player;
         
+        // Disable player controls until we're ready
+        player.controls(false);
+        
         // Check saved position immediately (localStorage is synchronous)
         const savedPosition = getSavedVideoPosition(videoId);
         const shouldAutoResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
@@ -658,10 +661,17 @@ class VODArchive {
             autoResumeVideo(player, savedPosition.time);
         };
 
+        // Enable controls and handle auto-resume when metadata loads
+        const onMetadataLoaded = () => {
+            // Enable controls now that we can properly handle playback
+            player.controls(true);
+            
+            // Do auto-resume if needed
+            setTimeout(doAutoResume, 50);
+        };
+
         // Event listeners
-        player.on('loadedmetadata', () => {
-            setTimeout(doAutoResume, 100);
-        });
+        player.on('loadedmetadata', onMetadataLoaded);
 
         player.on('play', () => {
             // If we should resume but haven't yet, trigger auto-resume immediately
@@ -697,8 +707,9 @@ class VODArchive {
 
         window.addEventListener('beforeunload', savePosition);
 
+        // Handle case where metadata is already loaded
         if (player.readyState() >= 1) {
-            setTimeout(doAutoResume, 100);
+            onMetadataLoaded();
         }
     }
 
