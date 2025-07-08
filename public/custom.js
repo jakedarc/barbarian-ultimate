@@ -320,23 +320,31 @@ class VODArchive {
 
         console.log('Rendering videos:', videosToShow.slice(0, 2).map(v => ({ id: v.id, title: v.title }))); // Debug first 2
 
-        grid.innerHTML = videosToShow.map(video => `
-            <div class="video-item" onclick="archive.loadVideo('${video.id}')">
-                <img class="video-thumbnail" 
-                     src="/api/thumbnail/72/${video.id}" 
-                     alt="${video.title}"
-                     loading="lazy"
-                     onerror="this.style.background='#333'; this.style.color='#666'; this.style.display='flex'; this.style.alignItems='center'; this.style.justifyContent='center'; this.innerHTML='No Image';">
-                <div class="video-info">
-                    <div class="video-item-title">${video.title}</div>
-                    <div class="video-item-date">${video.date.toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                    })}</div>
+        grid.innerHTML = videosToShow.map(video => {
+            const savedPosition = getSavedVideoPosition(video.id);
+            const hasResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
+            
+            return `
+                <div class="video-item" onclick="archive.loadVideo('${video.id}')">
+                    <div class="video-thumbnail-container">
+                        <img class="video-thumbnail" 
+                             src="/api/thumbnail/72/${video.id}" 
+                             alt="${video.title}"
+                             loading="lazy"
+                             onerror="this.style.background='#333'; this.style.color='#666'; this.style.display='flex'; this.style.alignItems='center'; this.style.justifyContent='center'; this.innerHTML='No Image';">
+                        ${hasResume ? `<div class="resume-overlay">${formatTime(savedPosition.time)}</div>` : ''}
+                    </div>
+                    <div class="video-info">
+                        <div class="video-item-title">${video.title}</div>
+                        <div class="video-item-date">${video.date.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                        })}</div>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     async loadVideo(videoId) {
