@@ -432,7 +432,6 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-hls/5.15.0/videojs-contrib-hls.min.js"></script>
     <script>
         class VODArchive {
             constructor() {
@@ -688,10 +687,16 @@
                 document.getElementById('videoDesc').textContent = video.description || '(no description)';
                 document.getElementById('infoSection').style.display = 'block';
 
-                // Dispose of existing player
+                // Dispose of existing player and cleanup
                 if (this.player) {
                     this.player.dispose();
                     this.player = null;
+                }
+
+                // Clean up any existing videojs instances
+                const existingPlayer = videojs.getPlayer('videoPlayer');
+                if (existingPlayer) {
+                    existingPlayer.dispose();
                 }
 
                 // Show video container and hide placeholder
@@ -724,14 +729,7 @@
                 this.player = videojs('videoPlayer', {
                     fluid: true,
                     responsive: true,
-                    aspectRatio: '16:9',
-                    html5: {
-                        hls: {
-                            enableLowInitialPlaylist: true,
-                            smoothQualityChange: true,
-                            overrideNative: true
-                        }
-                    }
+                    aspectRatio: '16:9'
                 });
 
                 this.player.ready(() => {
