@@ -558,6 +558,7 @@ class VODArchive {
             aspectRatio: '16:9'
         });
 
+        // Set up position tracking immediately (no async needed for localStorage)
         this.setupVideoPositionTracking(videoId);
         this.setupVideoTimeTracking(this.player, videoId);
 
@@ -583,56 +584,42 @@ class VODArchive {
 
     setupVideoPositionTracking(videoId) {
         const player = this.player;
-        let positionCheckComplete = false;
         
-        // Block play until position check is done
-        const blockPlayUntilReady = (e) => {
-            if (!positionCheckComplete) {
-                e.preventDefault();
-                player.pause();
-                return false;
-            }
-        };
+        // Check saved position immediately (localStorage is synchronous)
+        const savedPosition = getSavedVideoPosition(videoId);
         
-        player.on('play', blockPlayUntilReady);
-        
-        // Create start over button if there's a saved position
-        const createStartOverButton = () => {
-            const savedPosition = getSavedVideoPosition(videoId);
-            if (!savedPosition || savedPosition.time <= VIDEO_POSITION_CONFIG.resumeThreshold) return;
-            
-            // Find the title element
+        // Create start over button immediately if there's a saved position
+        if (savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold) {
             const titleElement = document.getElementById('videoTitle');
-            if (!titleElement || this.startOverBtn) return;
-            
-            this.startOverBtn = document.createElement('button');
-            this.startOverBtn.textContent = `Start Over (was at ${formatTime(savedPosition.time)})`;
-            this.startOverBtn.className = 'start-over-btn';
-            
-            this.startOverBtn.addEventListener('click', () => {
-                clearVideoPosition(videoId);
+            if (titleElement && !this.startOverBtn) {
+                this.startOverBtn = document.createElement('button');
+                this.startOverBtn.textContent = `Start Over (was at ${formatTime(savedPosition.time)})`;
+                this.startOverBtn.className = 'start-over-btn';
                 
-                // Reset resume flags first
-                this.hasResumed = false;
-                this.shouldResume = false;
-                player.isResuming = false;
+                this.startOverBtn.addEventListener('click', () => {
+                    clearVideoPosition(videoId);
+                    
+                    // Reset resume flags first
+                    this.hasResumed = false;
+                    this.shouldResume = false;
+                    player.isResuming = false;
+                    
+                    // Remove any existing auto-resume event listeners
+                    player.off('play');
+                    
+                    // Simply seek to beginning - works even if video hasn't been played
+                    player.currentTime(0);
+                    
+                    // Re-setup the normal event listeners (without auto-resume)
+                    this.setupNormalEventListeners(player, videoId);
+                    
+                    this.removeStartOverButton();
+                    this.renderVideos(); // Refresh the video list to remove resume indicators
+                });
                 
-                // Remove any existing auto-resume event listeners
-                player.off('play');
-                
-                // Simply seek to beginning - works even if video hasn't been played
-                player.currentTime(0);
-                
-                // Re-setup the normal event listeners (without auto-resume)
-                this.setupNormalEventListeners(player, videoId);
-                
-                this.removeStartOverButton();
-                this.renderVideos(); // Refresh the video list to remove resume indicators
-            });
-            
-            // Add it to the title element
-            titleElement.appendChild(this.startOverBtn);
-        };
+                titleElement.appendChild(this.startOverBtn);
+            }
+        }
 
         // Save position periodically
         const savePosition = () => {
@@ -659,11 +646,10 @@ class VODArchive {
             }
         };
 
-        // Check for saved position and auto-resume
+        // Check for saved position and auto-resume (only when metadata is loaded)
         const checkSavedPosition = () => {
             if (this.hasResumed || player.isResuming) return;
             
-            const savedPosition = getSavedVideoPosition(videoId);
             if (savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold) {
                 this.shouldResume = true;
                 this.hasResumed = true;
@@ -671,23 +657,12 @@ class VODArchive {
             }
         };
 
-        // Complete the position check and allow play
-        const completePositionCheck = () => {
-            player.off('play', blockPlayUntilReady);
-            positionCheckComplete = true;
-            checkSavedPosition();
-            createStartOverButton();
-        };
-
         // Event listeners
         player.on('loadedmetadata', () => {
-            // Use immediate timeout to ensure this happens after current call stack
-            setTimeout(completePositionCheck, 0);
+            setTimeout(checkSavedPosition, 100);
         });
 
         player.on('play', () => {
-            if (!positionCheckComplete) return; // This should not happen now, but safety check
-            
             if (this.shouldResume && !this.hasResumed) {
                 player.pause();
                 checkSavedPosition();
@@ -720,9 +695,8 @@ class VODArchive {
 
         window.addEventListener('beforeunload', savePosition);
 
-        // Fallback if video is already loaded
         if (player.readyState() >= 1) {
-            setTimeout(completePositionCheck, 0);
+            setTimeout(checkSavedPosition, 100);
         }
     }
 
