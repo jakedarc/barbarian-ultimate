@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Macaw45 VOD Archive</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -31,7 +32,7 @@
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 0;
         }
 
         /* Video Section */
@@ -87,6 +88,7 @@
         .info-section {
             max-width: 1200px;
             margin: 0 auto 40px auto;
+            padding: 0 20px;
         }
 
         .video-title {
@@ -97,39 +99,49 @@
 
         .video-source {
             margin-bottom: 20px;
-            color: #ccc;
+            color: #94a3b8;
+            font-size: 0.9rem;
         }
 
         .video-description {
-            background: #333;
-            padding: 15px;
-            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(51, 65, 85, 0.8), rgba(30, 41, 59, 0.8));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+            padding: 20px;
+            border-radius: 16px;
             margin-bottom: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
 
         .video-date {
-            font-weight: bold;
-            color: #69f;
+            font-weight: 600;
+            color: #64b5f6;
             margin-bottom: 10px;
+            font-size: 0.9rem;
         }
 
         .description-text {
-            color: #ddd;
+            color: #cbd5e1;
+            font-size: 0.95rem;
         }
 
         .disclaimer {
-            font-size: 12px;
-            color: #888;
+            font-size: 0.8rem;
+            color: #64748b;
             font-style: italic;
+            font-family: "JetBrains Mono", monospace;
         }
 
         /* Filters Section */
         .filters-section {
             max-width: 1200px;
             margin: 0 auto 30px auto;
-            padding: 20px;
-            background: #111;
-            border-radius: 8px;
+            padding: 24px;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.8));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
 
         .title-filter {
@@ -359,9 +371,6 @@
                 <div class="video-date" id="videoDate"></div>
                 <div class="description-text" id="videoDesc"></div>
             </div>
-            <div class="disclaimer">
-                this is not an official macaw45 site - do not bother him about it
-            </div>
         </div>
 
         <!-- Filters Section -->
@@ -576,7 +585,7 @@
             }
 
             scrollToTop() {
-                document.querySelector('.container').scrollIntoView({ 
+                document.querySelector('.filters-section').scrollIntoView({ 
                     behavior: 'smooth',
                     block: 'start'
                 });
@@ -662,7 +671,11 @@
                              onerror="this.style.background='#333'; this.style.color='#666'; this.style.display='flex'; this.style.alignItems='center'; this.style.justifyContent='center'; this.innerHTML='No Image';">
                         <div class="video-info">
                             <div class="video-item-title">${video.title}</div>
-                            <div class="video-item-date">${video.date.toLocaleDateString()}</div>
+                            <div class="video-item-date">${video.date.toLocaleDateString('en-US', { 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                            })}</div>
                         </div>
                     </div>
                 `).join('');
@@ -683,7 +696,11 @@
                 // Show video info
                 document.getElementById('videoTitle').textContent = video.title;
                 document.getElementById('videoSource').innerHTML = `originally from <a href="https://twitch.tv/videos/${videoId}" target="_blank">twitch.tv/videos/${videoId}</a>`;
-                document.getElementById('videoDate').textContent = video.date.toLocaleDateString();
+                document.getElementById('videoDate').textContent = video.date.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
                 document.getElementById('videoDesc').textContent = video.description || '(no description)';
                 document.getElementById('infoSection').style.display = 'block';
 

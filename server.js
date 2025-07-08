@@ -66,7 +66,6 @@ app.get('/api/thumbnail/:size/:videoId', async (req, res) => {
 app.get('/api/video/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
-    console.log(`Raw videoId parameter: "${videoId}"`);
     
     // Clean the videoId - remove any 'v' prefix and '.mp4' suffix
     let cleanVideoId = videoId;
@@ -79,12 +78,11 @@ app.get('/api/video/:videoId', async (req, res) => {
     
     const url = `https://barbarian.men/macaw45/videos/v${cleanVideoId}.m3u8`;
     
-    console.log(`Cleaned videoId: "${cleanVideoId}"`);
-    console.log(`Fetching video: ${url}`);
+    console.log(`📺 Loading video playlist: ${cleanVideoId}`);
     const response = await fetch(url);
     
     if (!response.ok) {
-      console.error(`Video fetch failed: HTTP ${response.status} for ${url}`);
+      console.error(`❌ Video fetch failed: HTTP ${response.status} for ${url}`);
       return res.status(404).send('Video not found');
     }
     
@@ -103,8 +101,6 @@ app.get('/api/video/:videoId', async (req, res) => {
       `/api/mp4/$1`
     );
     
-    console.log(`Successfully fetched and modified M3U8 for video: ${cleanVideoId}`);
-    
     // Set appropriate headers for M3U8
     res.set('Content-Type', 'application/x-mpegURL');
     res.set('Cache-Control', 'public, max-age=300'); // 5 minutes
@@ -112,7 +108,7 @@ app.get('/api/video/:videoId', async (req, res) => {
     
     res.send(modifiedContent);
   } catch (error) {
-    console.error('Error fetching video:', error);
+    console.error('❌ Error fetching video:', error);
     res.status(500).send('Error fetching video');
   }
 });
@@ -123,8 +119,11 @@ app.get('/api/mp4/:filename', async (req, res) => {
     const { filename } = req.params;
     const url = `https://barbarian.men/macaw45/videos/${filename}`;
     
-    console.log(`Fetching MP4: ${url}`);
-    console.log(`Range header: ${req.headers.range || 'none'}`);
+    // Only log errors or first request for each file
+    const isFirstRequest = !req.headers.range || req.headers.range === 'bytes=0-';
+    if (isFirstRequest) {
+      console.log(`🎬 Starting MP4 stream: ${filename}`);
+    }
     
     const headers = {};
     if (req.headers.range) {
@@ -134,7 +133,7 @@ app.get('/api/mp4/:filename', async (req, res) => {
     const response = await fetch(url, { headers });
     
     if (!response.ok) {
-      console.error(`MP4 fetch failed: HTTP ${response.status} for ${url}`);
+      console.error(`❌ MP4 fetch failed: HTTP ${response.status} for ${filename}`);
       return res.status(404).send('MP4 not found');
     }
     
@@ -155,7 +154,7 @@ app.get('/api/mp4/:filename', async (req, res) => {
     
     response.body.pipe(res);
   } catch (error) {
-    console.error('Error fetching MP4:', error);
+    console.error('❌ Error fetching MP4:', error);
     res.status(500).send('Error fetching MP4');
   }
 });
