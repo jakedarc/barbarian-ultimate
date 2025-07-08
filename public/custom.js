@@ -551,6 +551,12 @@ class VODArchive {
         // Insert the new video element
         videoContainer.appendChild(newVideoElement);
 
+        // Add loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'video-loading-indicator';
+        loadingIndicator.innerHTML = '<div class="video-loading-spinner"></div>';
+        videoContainer.appendChild(loadingIndicator);
+
         // Initialize Video.js player
         this.player = videojs('videoPlayer', {
             fluid: true,
@@ -663,6 +669,12 @@ class VODArchive {
 
         // Enable controls and handle auto-resume when metadata loads
         const onMetadataLoaded = () => {
+            // Remove loading indicator
+            const loadingIndicator = document.querySelector('.video-loading-indicator');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+            
             // Enable controls now that we can properly handle playback
             player.controls(true);
             
