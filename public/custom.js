@@ -450,8 +450,21 @@ class VODArchive {
             
             this.startOverBtn.addEventListener('click', () => {
                 clearVideoPosition(videoId);
+                
+                // Reset resume flags first
+                this.hasResumed = false;
+                this.shouldResume = false;
+                player.isResuming = false;
+                
+                // Remove any existing auto-resume event listeners
+                player.off('play');
+                
+                // Simply seek to beginning - works even if video hasn't been played
                 player.currentTime(0);
-                player.pause();
+                
+                // Re-setup the normal event listeners (without auto-resume)
+                this.setupNormalEventListeners(player, videoId);
+                
                 this.removeStartOverButton();
                 this.renderVideos(); // Refresh the video list to remove resume indicators
             });
@@ -544,6 +557,61 @@ class VODArchive {
                 createStartOverButton();
             }, 100);
         }
+    }
+
+    setupNormalEventListeners(player, videoId) {
+        // Save position periodically
+        const savePosition = () => {
+            if (player.isResuming) return;
+            
+            const currentTime = player.currentTime();
+            const duration = player.duration();
+            
+            if (currentTime && duration && !isNaN(currentTime) && !isNaN(duration)) {
+                saveVideoPosition(videoId, currentTime, duration);
+            }
+        };
+
+        // Start/stop periodic saving
+        const startSaving = () => {
+            if (this.saveTimer) clearInterval(this.saveTimer);
+            this.saveTimer = setInterval(savePosition, VIDEO_POSITION_CONFIG.saveInterval * 1000);
+        };
+
+        const stopSaving = () => {
+            if (this.saveTimer) {
+                clearInterval(this.saveTimer);
+                this.saveTimer = null;
+            }
+        };
+
+        // Normal event listeners (no auto-resume)
+        player.on('play', () => {
+            if (!player.isResuming) {
+                startSaving();
+            }
+        });
+
+        player.on('pause', () => {
+            if (!player.isResuming) {
+                savePosition();
+            }
+        });
+
+        player.on('seeked', () => {
+            if (!player.isResuming) {
+                savePosition();
+            }
+        });
+
+        player.on('ended', () => {
+            stopSaving();
+            clearVideoPosition(videoId);
+            this.removeStartOverButton();
+            this.renderVideos();
+        });
+
+        window.addEventListener('beforeunload', savePosition);
     }
 
     removeStartOverButton() {
