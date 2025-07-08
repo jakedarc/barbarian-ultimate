@@ -438,6 +438,9 @@ class VODArchive {
 
         // Scroll to video
         document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
+        
+        // Update the video list to show any new resume indicators
+        this.renderVideos();
     }
 
     setupVideoPositionTracking(videoId) {
