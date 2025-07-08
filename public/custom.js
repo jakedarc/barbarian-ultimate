@@ -6,6 +6,24 @@ const VIDEO_POSITION_CONFIG = {
     resumeThreshold: 60 // Only resume if more than 60 seconds from start
 };
 
+/*
+ * Chat System Server Requirements:
+ * 
+ * The chat functionality expects these API endpoints on the server:
+ * 
+ * GET /api/chat/:videoId
+ * - Returns array of available chat timecodes for the video
+ * - Response: [1, 5, 12, 23, ...] (seconds where chat messages exist)
+ * 
+ * GET /api/chat/:videoId/:startTime/:endTime  
+ * - Returns chat messages for the specified time range
+ * - Response: [{offset: 123, commenter: {display_name: "User"}, message: {body: "Hello!"}}, ...]
+ * 
+ * Chat data should be stored as JSON files in a format similar to:
+ * comments/{videoId}.json - contains the timecode array
+ * comments/{videoId}_messages.json - contains all messages with timestamps
+ */
+
 // Clean up old saved positions
 function cleanupOldPositions() {
     const now = Date.now();
@@ -109,6 +127,12 @@ class VODArchive {
         this.startOverBtn = null;
         this.maxCachedItems = 200; // Limit DOM elements in memory
         this.itemAccessTimes = new Map(); // Track when items were last accessed
+        
+        // Chat-related properties
+        this.chatOpen = false;
+        this.chatTimecodes = new Set();
+        this.lastChatTime = -1;
+        this.chatSeekThreshold = 5; // seconds
         
         this.init();
         cleanupOldPositions();
@@ -240,7 +264,12 @@ class VODArchive {
 
         // Chat toggle
         document.getElementById('chatToggle').addEventListener('click', () => {
-            alert('Chat functionality coming soon!');
+            this.toggleChat();
+        });
+        
+        // Chat close
+        document.getElementById('chatClose').addEventListener('click', () => {
+            this.closeChat();
         });
     }
 
@@ -500,10 +529,10 @@ class VODArchive {
         const placeholder = document.getElementById('videoPlaceholder');
         const playerElement = document.getElementById('videoPlayer');
         const chatToggle = document.getElementById('chatToggle');
-        const videoContainer = document.querySelector('.video-container');
+        const videoContainer = document.getElementById('videoContainer');
         
         if (placeholder) placeholder.style.display = 'none';
-        if (chatToggle) chatToggle.style.display = 'block';
+        if (chatToggle) chatToggle.style.display = 'none'; // Hidden for now
 
         // Recreate the video element to ensure clean state
         if (playerElement) {
@@ -530,6 +559,7 @@ class VODArchive {
         });
 
         this.setupVideoPositionTracking(videoId);
+        this.setupVideoTimeTracking(this.player, videoId);
 
         this.player.ready(() => {
             console.log('Player ready, loading video...');
@@ -538,6 +568,11 @@ class VODArchive {
                 type: 'application/x-mpegURL'
             });
         });
+
+        // Load chat timecodes if chat is open
+        if (this.chatOpen) {
+            this.loadChatTimecodes(videoId);
+        }
 
         // Scroll to video
         document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
@@ -548,6 +583,18 @@ class VODArchive {
 
     setupVideoPositionTracking(videoId) {
         const player = this.player;
+        let positionCheckComplete = false;
+        
+        // Block play until position check is done
+        const blockPlayUntilReady = (e) => {
+            if (!positionCheckComplete) {
+                e.preventDefault();
+                player.pause();
+                return false;
+            }
+        };
+        
+        player.on('play', blockPlayUntilReady);
         
         // Create start over button if there's a saved position
         const createStartOverButton = () => {
@@ -624,15 +671,23 @@ class VODArchive {
             }
         };
 
+        // Complete the position check and allow play
+        const completePositionCheck = () => {
+            player.off('play', blockPlayUntilReady);
+            positionCheckComplete = true;
+            checkSavedPosition();
+            createStartOverButton();
+        };
+
         // Event listeners
         player.on('loadedmetadata', () => {
-            setTimeout(() => {
-                checkSavedPosition();
-                createStartOverButton();
-            }, 100);
+            // Use immediate timeout to ensure this happens after current call stack
+            setTimeout(completePositionCheck, 0);
         });
 
         player.on('play', () => {
+            if (!positionCheckComplete) return; // This should not happen now, but safety check
+            
             if (this.shouldResume && !this.hasResumed) {
                 player.pause();
                 checkSavedPosition();
@@ -665,11 +720,9 @@ class VODArchive {
 
         window.addEventListener('beforeunload', savePosition);
 
+        // Fallback if video is already loaded
         if (player.readyState() >= 1) {
-            setTimeout(() => {
-                checkSavedPosition();
-                createStartOverButton();
-            }, 100);
+            setTimeout(completePositionCheck, 0);
         }
     }
 
@@ -728,6 +781,182 @@ class VODArchive {
         window.addEventListener('beforeunload', savePosition);
     }
 
+    setupVideoTimeTracking(player, videoId) {
+        player.on('timeupdate', () => {
+            const currentTime = Math.floor(player.currentTime());
+            
+            // Update URL hash with current time
+            if (currentTime !== this.lastChatTime && currentTime > 0) {
+                history.replaceState({}, '', `#${videoId}?t=${currentTime}`);
+                
+                // Load chat for current time range if chat is open
+                if (this.chatOpen && this.chatTimecodes.size > 0) {
+                    let startTime = Math.max(currentTime - this.chatSeekThreshold, this.lastChatTime + 1);
+                    if (currentTime < this.lastChatTime) {
+                        startTime = currentTime - this.chatSeekThreshold;
+                    }
+                    
+                    for (let t = startTime; t <= currentTime + this.chatSeekThreshold; t++) {
+                        if (this.chatTimecodes.has(t)) {
+                            // Load chat messages for this time range
+                            this.loadChatForTimeRange(videoId, Math.max(0, currentTime - 30), currentTime + 10);
+                            break;
+                        }
+                    }
+                }
+                
+                this.lastChatTime = currentTime;
+            }
+        });
+        
+        // Handle seeking
+        player.on('seeked', () => {
+            const currentTime = Math.floor(player.currentTime());
+            if (this.chatOpen) {
+                // Load chat around the seeked position
+                this.loadChatForTimeRange(videoId, Math.max(0, currentTime - 30), currentTime + 10);
+            }
+        });
+    }
+
+    toggleChat() {
+        if (this.chatOpen) {
+            this.closeChat();
+        } else {
+            this.openChat();
+        }
+    }
+
+    openChat() {
+        const chatSidebar = document.getElementById('chatSidebar');
+        const chatToggle = document.getElementById('chatToggle');
+        const videoSection = document.querySelector('.video-section');
+        
+        chatSidebar.style.display = 'flex';
+        chatToggle.textContent = 'Hide Chat';
+        videoSection.classList.add('chat-open');
+        this.chatOpen = true;
+        
+        // Load chat for current video if available
+        if (this.currentVideo && this.player) {
+            this.loadChatTimecodes(this.currentVideo.id);
+        }
+    }
+
+    closeChat() {
+        const chatSidebar = document.getElementById('chatSidebar');
+        const chatToggle = document.getElementById('chatToggle');
+        const videoSection = document.querySelector('.video-section');
+        
+        chatSidebar.style.display = 'none';
+        chatToggle.textContent = 'Show Chat';
+        videoSection.classList.remove('chat-open');
+        this.chatOpen = false;
+    }
+
+    async loadChatTimecodes(videoId) {
+        try {
+            const response = await fetch(`/api/chat/${videoId}`);
+            if (response.ok) {
+                const timecodes = await response.json();
+                this.chatTimecodes = new Set(timecodes);
+                console.log(`Loaded ${timecodes.length} chat timecodes for video ${videoId}`);
+            } else {
+                console.log(`No chat data available for video ${videoId}`);
+                this.chatTimecodes = new Set();
+                this.showNoChatMessage();
+            }
+        } catch (error) {
+            console.error('Failed to load chat timecodes:', error);
+            this.chatTimecodes = new Set();
+            this.showNoChatMessage();
+        }
+    }
+
+    showNoChatMessage() {
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.innerHTML = '<div class="chat-no-messages">No chat data available for this video</div>';
+    }
+
+    async loadChatForTimeRange(videoId, startTime, endTime) {
+        try {
+            const response = await fetch(`/api/chat/${videoId}/${startTime}/${endTime}`);
+            if (response.ok) {
+                const messages = await response.json();
+                this.displayChatMessages(messages, startTime, endTime);
+            }
+        } catch (error) {
+            console.error('Failed to load chat messages:', error);
+        }
+    }
+
+    displayChatMessages(messages, startTime, endTime) {
+        const chatMessages = document.getElementById('chatMessages');
+        
+        // Clear loading or existing messages for this time range
+        chatMessages.innerHTML = '';
+        
+        if (messages.length === 0) {
+            chatMessages.innerHTML = '<div class="chat-loading">No messages in this time range</div>';
+            return;
+        }
+        
+        messages.forEach(message => {
+            const messageElement = this.createChatMessageElement(message);
+            chatMessages.appendChild(messageElement);
+        });
+        
+        // Scroll to bottom to show latest messages
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    createChatMessageElement(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'chat-message';
+        
+        const timestamp = document.createElement('span');
+        timestamp.className = 'chat-timestamp';
+        timestamp.textContent = formatTime(message.offset);
+        
+        const username = document.createElement('span');
+        username.className = 'chat-username';
+        username.textContent = message.commenter?.display_name || 'Anonymous';
+        
+        const text = document.createElement('span');
+        text.className = 'chat-text';
+        
+        // Simple text for now - could be enhanced with emote parsing
+        if (message.message && message.message.body) {
+            text.textContent = message.message.body;
+        } else {
+            text.textContent = message.text || '';
+        }
+        
+        messageDiv.appendChild(timestamp);
+        messageDiv.appendChild(username);
+        messageDiv.appendChild(text);
+        
+        return messageDiv;
+    }
+
+    checkURLForVideoAndTime() {
+        const hash = window.location.hash.slice(1);
+        if (hash) {
+            const [videoId, timeParam] = hash.split('?t=');
+            if (videoId) {
+                this.loadVideo(videoId);
+                if (timeParam) {
+                    const seekTime = parseInt(timeParam, 10);
+                    if (seekTime > 0 && this.player) {
+                        this.player.ready(() => {
+                            this.player.currentTime(seekTime);
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     removeStartOverButton() {
         if (this.startOverBtn) {
             this.startOverBtn.remove();
@@ -736,10 +965,7 @@ class VODArchive {
     }
 
     checkURLForVideo() {
-        const hash = window.location.hash.slice(1);
-        if (hash) {
-            this.loadVideo(hash);
-        }
+        this.checkURLForVideoAndTime();
     }
 }
 

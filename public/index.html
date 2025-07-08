@@ -12,7 +12,7 @@
     <div class="container">
         <!-- Video Section -->
         <div class="video-section">
-            <div class="video-container">
+            <div class="video-container" id="videoContainer">
                 <div class="video-placeholder" id="videoPlaceholder">
                     <div>🎮 Select a video to start watching</div>
                     <div style="font-size: 16px; margin-top: 10px; color: #888;">Browse the archive below</div>
@@ -20,6 +20,15 @@
                 <video id="videoPlayer" class="video-js vjs-default-skin" style="display: none;"
                        controls preload="auto" data-setup="{}">
                 </video>
+            </div>
+            <div class="chat-sidebar" id="chatSidebar" style="display: none;">
+                <div class="chat-header">
+                    <span>Chat Replay</span>
+                    <button class="chat-close" id="chatClose">×</button>
+                </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-loading">Loading chat...</div>
+                </div>
             </div>
             <button class="chat-toggle" id="chatToggle" style="display: none;">Show Chat</button>
         </div>
