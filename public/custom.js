@@ -107,6 +107,8 @@ class VODArchive {
         this.hasResumed = false;
         this.shouldResume = false;
         this.startOverBtn = null;
+        this.maxCachedItems = 200; // Limit DOM elements in memory
+        this.itemAccessTimes = new Map(); // Track when items were last accessed
         
         this.init();
         cleanupOldPositions();
@@ -318,21 +320,33 @@ class VODArchive {
         const endIndex = startIndex + this.itemsPerPage;
         const videosToShow = this.filteredVideos.slice(startIndex, endIndex);
 
-        console.log('Rendering videos:', videosToShow.slice(0, 2).map(v => ({ id: v.id, title: v.title }))); // Debug first 2
+        // Only rebuild if grid is empty or we have a completely different set of videos
+        const existingItems = grid.querySelectorAll('.video-item');
+        const shouldRebuild = existingItems.length === 0;
 
+        if (shouldRebuild) {
+            console.log('Rebuilding video grid');
+            this.buildVideoGrid(grid, videosToShow);
+        } else {
+            console.log('Updating existing video grid');
+            this.updateVideoGrid(grid, videosToShow);
+        }
+    }
+
+    buildVideoGrid(grid, videosToShow) {
         grid.innerHTML = videosToShow.map(video => {
             const savedPosition = getSavedVideoPosition(video.id);
             const hasResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
             
             return `
-                <div class="video-item" onclick="archive.loadVideo('${video.id}')">
+                <div class="video-item" data-video-id="${video.id}" onclick="archive.loadVideo('${video.id}')">
                     <div class="video-thumbnail-container">
                         <img class="video-thumbnail" 
                              src="/api/thumbnail/72/${video.id}" 
                              alt="${video.title}"
                              loading="lazy"
                              onerror="this.style.background='#333'; this.style.color='#666'; this.style.display='flex'; this.style.alignItems='center'; this.style.justifyContent='center'; this.innerHTML='No Image';">
-                        ${hasResume ? `<div class="resume-overlay">${formatTime(savedPosition.time)}</div>` : ''}
+                        ${hasResume ? `<div class="resume-overlay">⏸ ${formatTime(savedPosition.time)}</div>` : ''}
                     </div>
                     <div class="video-info">
                         <div class="video-item-title">${video.title}</div>
@@ -345,6 +359,95 @@ class VODArchive {
                 </div>
             `;
         }).join('');
+    }
+
+    updateVideoGrid(grid, videosToShow) {
+        const existingItems = Array.from(grid.querySelectorAll('.video-item'));
+        const now = Date.now();
+        
+        // Mark currently shown videos as recently accessed
+        videosToShow.forEach(video => {
+            this.itemAccessTimes.set(video.id, now);
+        });
+        
+        // Clean up excess items if we're over the cache limit
+        if (existingItems.length > this.maxCachedItems) {
+            // Sort items by last access time (oldest first)
+            const itemsWithTimes = existingItems.map(item => ({
+                element: item,
+                videoId: item.dataset.videoId,
+                lastAccess: this.itemAccessTimes.get(item.dataset.videoId) || 0
+            })).sort((a, b) => a.lastAccess - b.lastAccess);
+            
+            const itemsToRemove = itemsWithTimes.slice(0, existingItems.length - this.maxCachedItems);
+            itemsToRemove.forEach(({ element, videoId }) => {
+                element.remove();
+                this.itemAccessTimes.delete(videoId);
+            });
+        }
+        
+        const remainingItems = Array.from(grid.querySelectorAll('.video-item'));
+        
+        // Hide all existing items first
+        remainingItems.forEach(item => item.style.display = 'none');
+        
+        // Show and update items for current page
+        videosToShow.forEach((video, index) => {
+            let item = remainingItems.find(el => el.dataset.videoId === video.id);
+            
+            if (!item) {
+                // Create new item if it doesn't exist
+                const savedPosition = getSavedVideoPosition(video.id);
+                const hasResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
+                
+                item = document.createElement('div');
+                item.className = 'video-item';
+                item.dataset.videoId = video.id;
+                item.onclick = () => archive.loadVideo(video.id);
+                item.innerHTML = `
+                    <div class="video-thumbnail-container">
+                        <img class="video-thumbnail" 
+                             src="/api/thumbnail/72/${video.id}" 
+                             alt="${video.title}"
+                             loading="lazy"
+                             onerror="this.style.background='#333'; this.style.color='#666'; this.style.display='flex'; this.style.alignItems='center'; this.style.justifyContent='center'; this.innerHTML='No Image';">
+                        ${hasResume ? `<div class="resume-overlay">⏸ ${formatTime(savedPosition.time)}</div>` : ''}
+                    </div>
+                    <div class="video-info">
+                        <div class="video-item-title">${video.title}</div>
+                        <div class="video-item-date">${video.date.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                        })}</div>
+                    </div>
+                `;
+                grid.appendChild(item);
+                this.itemAccessTimes.set(video.id, now);
+            } else {
+                // Update existing item's resume overlay
+                const savedPosition = getSavedVideoPosition(video.id);
+                const hasResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
+                const container = item.querySelector('.video-thumbnail-container');
+                let overlay = container.querySelector('.resume-overlay');
+                
+                if (hasResume && !overlay) {
+                    overlay = document.createElement('div');
+                    overlay.className = 'resume-overlay';
+                    overlay.textContent = `⏸ ${formatTime(savedPosition.time)}`;
+                    container.appendChild(overlay);
+                } else if (hasResume && overlay) {
+                    overlay.textContent = `⏸ ${formatTime(savedPosition.time)}`;
+                } else if (!hasResume && overlay) {
+                    overlay.remove();
+                }
+                
+                // Update access time for existing item
+                this.itemAccessTimes.set(video.id, now);
+            }
+            
+            item.style.display = 'flex';
+        });
     }
 
     async loadVideo(videoId) {
