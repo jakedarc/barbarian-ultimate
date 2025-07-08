@@ -587,9 +587,10 @@ class VODArchive {
         
         // Check saved position immediately (localStorage is synchronous)
         const savedPosition = getSavedVideoPosition(videoId);
+        const shouldAutoResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
         
         // Create start over button immediately if there's a saved position
-        if (savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold) {
+        if (shouldAutoResume) {
             const titleElement = document.getElementById('videoTitle');
             if (titleElement && !this.startOverBtn) {
                 this.startOverBtn = document.createElement('button');
@@ -619,6 +620,9 @@ class VODArchive {
                 
                 titleElement.appendChild(this.startOverBtn);
             }
+            
+            // Set resume flags immediately
+            this.shouldResume = true;
         }
 
         // Save position periodically
@@ -646,26 +650,24 @@ class VODArchive {
             }
         };
 
-        // Check for saved position and auto-resume (only when metadata is loaded)
-        const checkSavedPosition = () => {
-            if (this.hasResumed || player.isResuming) return;
+        // Auto-resume logic
+        const doAutoResume = () => {
+            if (this.hasResumed || player.isResuming || !this.shouldResume) return;
             
-            if (savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold) {
-                this.shouldResume = true;
-                this.hasResumed = true;
-                autoResumeVideo(player, savedPosition.time);
-            }
+            this.hasResumed = true;
+            autoResumeVideo(player, savedPosition.time);
         };
 
         // Event listeners
         player.on('loadedmetadata', () => {
-            setTimeout(checkSavedPosition, 100);
+            setTimeout(doAutoResume, 100);
         });
 
         player.on('play', () => {
+            // If we should resume but haven't yet, trigger auto-resume immediately
             if (this.shouldResume && !this.hasResumed) {
                 player.pause();
-                checkSavedPosition();
+                doAutoResume();
                 return;
             }
             
@@ -696,7 +698,7 @@ class VODArchive {
         window.addEventListener('beforeunload', savePosition);
 
         if (player.readyState() >= 1) {
-            setTimeout(checkSavedPosition, 100);
+            setTimeout(doAutoResume, 100);
         }
     }
 
