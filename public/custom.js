@@ -329,17 +329,21 @@ class VODArchive {
     updatePagination() {
         const totalPages = Math.ceil(this.filteredVideos.length / this.itemsPerPage);
         
+        // Check if we're on a phone-sized screen
+        const isPhone = window.innerWidth <= 480;
+        const videoCountText = isPhone ? '' : ` (${this.filteredVideos.length} videos)`;
+        
         // Update top pagination
         document.getElementById('pageInput').value = this.currentPage;
         document.getElementById('pageInput').max = totalPages;
-        document.getElementById('pageInfo').textContent = `of ${totalPages} (${this.filteredVideos.length} videos)`;
+        document.getElementById('pageInfo').textContent = `of ${totalPages}${videoCountText}`;
         document.getElementById('prevBtn').disabled = this.currentPage <= 1;
         document.getElementById('nextBtn').disabled = this.currentPage >= totalPages;
         
         // Update bottom pagination
         document.getElementById('bottomPageInput').value = this.currentPage;
         document.getElementById('bottomPageInput').max = totalPages;
-        document.getElementById('bottomPageInfo').textContent = `of ${totalPages} (${this.filteredVideos.length} videos)`;
+        document.getElementById('bottomPageInfo').textContent = `of ${totalPages}${videoCountText}`;
         document.getElementById('bottomPrevBtn').disabled = this.currentPage <= 1;
         document.getElementById('bottomNextBtn').disabled = this.currentPage >= totalPages;
     }
