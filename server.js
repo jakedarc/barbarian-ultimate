@@ -1,9 +1,12 @@
 const express = require('express');
 const path = require('path');
 const fetch = require('node-fetch');
+const fs = require('fs').promises;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const METADATA_FILE = path.join(__dirname, 'video-metadata.json');
 
 // Serve static files from public directory
 app.use(express.static('public'));
@@ -15,28 +18,128 @@ app.use((req, res, next) => {
   next();
 });
 
-// Proxy endpoint for videos.json
-app.get('/api/videos', async (req, res) => {
+// Load existing metadata
+async function loadMetadata() {
   try {
-    console.log('Fetching videos from barbarian.men...');
-    const response = await fetch('https://barbarian.men/macaw45/videos.json');
+    const data = await fs.readFile(METADATA_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.log('No existing metadata file, starting fresh');
+    return {};
+  }
+}
+
+// Save metadata
+async function saveMetadata(metadata) {
+  await fs.writeFile(METADATA_FILE, JSON.stringify(metadata, null, 2));
+}
+
+// Function to parse M3U8 duration
+async function getVideoDuration(videoId) {
+  try {
+    console.log(`Fetching duration for video ${videoId}...`);
+    const m3u8Response = await fetch(`https://barbarian.men/macaw45/videos/v${videoId}.m3u8`);
     
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (!m3u8Response.ok) {
+      console.error(`Failed to fetch M3U8 for ${videoId}: HTTP ${m3u8Response.status}`);
+      return null;
     }
     
-    const data = await response.json();
-    console.log(`Successfully fetched ${Object.keys(data).length} videos`);
+    const m3u8Content = await m3u8Response.text();
     
-    // Add cache headers
-    res.set('Cache-Control', 'public, max-age=300'); // 5 minutes
-    res.json(data);
+    // Parse total duration from M3U8
+    let totalDuration = 0;
+    const lines = m3u8Content.split('\n');
+    
+    for (const line of lines) {
+      if (line.startsWith('#EXTINF:')) {
+        // Extract duration from #EXTINF:duration,
+        const match = line.match(/#EXTINF:([0-9.]+),/);
+        if (match) {
+          const duration = parseFloat(match[1]);
+          totalDuration += duration;
+        }
+      }
+    }
+    
+    const roundedDuration = Math.round(totalDuration);
+    console.log(`Duration for ${videoId}: ${roundedDuration}s (${Math.floor(roundedDuration/3600)}:${Math.floor((roundedDuration%3600)/60).toString().padStart(2,'0')}:${(roundedDuration%60).toString().padStart(2,'0')})`);
+    return roundedDuration;
   } catch (error) {
-    console.error('Error fetching videos:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch videos',
-      message: error.message 
-    });
+    console.error(`Failed to get duration for ${videoId}:`, error);
+    return null;
+  }
+}
+
+// Sync with remote and update local metadata
+async function syncMetadata() {
+  try {
+    console.log('🔄 Syncing video metadata...');
+    const localMetadata = await loadMetadata();
+    
+    // Fetch remote video list
+    const response = await fetch('https://barbarian.men/macaw45/videos.json');
+    const remoteVideos = await response.json();
+    
+    console.log(`Remote videos structure:`, Object.keys(remoteVideos).slice(0, 3));
+    console.log(`Sample remote video:`, Object.entries(remoteVideos)[0]);
+    
+    let updated = false;
+    let newVideoCount = 0;
+    
+    for (const [indexKey, videoData] of Object.entries(remoteVideos)) {
+      // Use the actual vodid from the video data, not the index key
+      const actualVodId = videoData.vodid || indexKey;
+      
+      if (!localMetadata[indexKey]) {
+        console.log(`📹 New video found: Index ${indexKey}, VOD ID ${actualVodId} - ${videoData.title}`);
+        
+        // Get duration for new video using the actual VOD ID
+        const duration = await getVideoDuration(actualVodId);
+        
+        localMetadata[indexKey] = {
+          vodid: actualVodId, // Use the actual Twitch VOD ID
+          title: videoData.title,
+          description: videoData.description,
+          date: videoData.date,
+          duration,
+          lastUpdated: new Date().toISOString()
+        };
+        
+        updated = true;
+        newVideoCount++;
+      }
+    }
+    
+    if (updated) {
+      await saveMetadata(localMetadata);
+      console.log(`✅ Metadata updated: ${newVideoCount} new videos added`);
+    } else {
+      console.log('ℹ️ No new videos found');
+    }
+    
+    console.log(`Local metadata now has ${Object.keys(localMetadata).length} videos`);
+    return localMetadata;
+  } catch (error) {
+    console.error('❌ Error syncing metadata:', error);
+    return await loadMetadata(); // Fall back to existing data
+  }
+}
+
+// Serve from local metadata (convert to array format for frontend)
+app.get('/api/videos', async (req, res) => {
+  try {
+    const metadata = await loadMetadata();
+    
+    // Convert object to array format that frontend expects
+    const videosArray = Object.values(metadata);
+    
+    console.log(`📤 Serving ${videosArray.length} videos from local metadata`);
+    res.set('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    res.json(videosArray);
+  } catch (error) {
+    console.error('❌ Error serving videos:', error);
+    res.status(500).json({ error: 'Failed to load videos' });
   }
 });
 
@@ -62,7 +165,7 @@ app.get('/api/thumbnail/:size/:videoId', async (req, res) => {
   }
 });
 
-// Proxy endpoint for video files (in case of CORS issues)
+// Proxy endpoint for video files
 app.get('/api/video/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
@@ -159,6 +262,18 @@ app.get('/api/mp4/:filename', async (req, res) => {
   }
 });
 
+// Manual sync endpoint (for debugging)
+app.get('/api/sync', async (req, res) => {
+  try {
+    console.log('🔄 Manual sync triggered');
+    await syncMetadata();
+    res.json({ message: 'Sync completed' });
+  } catch (error) {
+    console.error('❌ Manual sync failed:', error);
+    res.status(500).json({ error: 'Sync failed' });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
@@ -187,20 +302,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🎮 Macaw45 VOD Archive running on http://localhost:${PORT}`);
-  console.log(`📁 Serving static files from ./public/`);
-  console.log(`🔗 API endpoint: http://localhost:${PORT}/api/videos`);
-});
+// Initialize metadata on startup
+async function startup() {
+  console.log('🚀 Starting VOD Archive server...');
+  
+  // Initial sync
+  await syncMetadata();
+  
+  // Set up periodic sync (every hour)
+  setInterval(syncMetadata, 60 * 60 * 1000);
+  console.log('⏰ Scheduled hourly metadata sync');
+  
+  app.listen(PORT, () => {
+    console.log(`🌐 Server running on http://localhost:${PORT}`);
+  });
+}
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
-  process.exit(0);
-});
+startup().catch(console.error);

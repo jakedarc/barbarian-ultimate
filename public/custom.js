@@ -158,7 +158,8 @@ class VODArchive {
                 id: video.vodid, // Use vodid as the ID
                 title: video.title,
                 description: video.description,
-                date: new Date(video.date)
+                date: new Date(video.date),
+                duration: video.duration // This will now be available!
             })).sort((a, b) => b.date - a.date); // Sort by date, newest first
             
             console.log('Processed videos:', this.videos.slice(0, 3).map(v => ({ id: v.id, title: v.title })));
@@ -379,11 +380,13 @@ class VODArchive {
                     </div>
                     <div class="video-info">
                         <div class="video-item-title">${video.title}</div>
-                        <div class="video-item-date">${video.date.toLocaleDateString('en-US', { 
-                            year: 'numeric', 
-                            month: 'long', 
-                            day: 'numeric' 
-                        })}</div>
+                        <div class="video-item-date">
+                            ${video.date.toLocaleDateString('en-US', { 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                            })}${video.duration ? ` • ${formatTime(video.duration)}` : ''}
+                        </div>
                     </div>
                 </div>
             `;
@@ -444,11 +447,13 @@ class VODArchive {
                     </div>
                     <div class="video-info">
                         <div class="video-item-title">${video.title}</div>
-                        <div class="video-item-date">${video.date.toLocaleDateString('en-US', { 
-                            year: 'numeric', 
-                            month: 'long', 
-                            day: 'numeric' 
-                        })}</div>
+                        <div class="video-item-date">
+                            ${video.date.toLocaleDateString('en-US', { 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                            })}${video.duration ? ` • ${formatTime(video.duration)}` : ''}
+                        </div>
                     </div>
                 `;
                 grid.appendChild(item);
