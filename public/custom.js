@@ -272,6 +272,11 @@ class VODArchive {
         document.getElementById('chatClose').addEventListener('click', () => {
             this.closeChat();
         });
+
+        // Pagination on resize
+        window.addEventListener('resize', () => {
+            this.updatePagination();
+        });
     }
 
     scrollToTop() {
