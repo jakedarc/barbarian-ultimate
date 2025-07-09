@@ -1002,3 +1002,8 @@ window.addEventListener('popstate', (e) => {
         document.title = 'Macaw45 VOD Archive';
     }
 });
+
+// Stop double tap to zoom
+document.ondblclick = function (e) {
+    e.preventDefault();
+}
