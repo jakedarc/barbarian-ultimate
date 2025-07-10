@@ -1,28 +1,10 @@
-// Video Position Saving Configuration
+// Video position saving settings
 const VIDEO_POSITION_CONFIG = {
-    saveInterval: 10, // Save position every 10 seconds
-    minSaveTime: 30, // Don't save positions for first 30 seconds
-    expireDays: 30, // Clear saved positions older than 30 days
-    resumeThreshold: 60 // Only resume if more than 60 seconds from start
+    saveInterval: 10,
+    minSaveTime: 30,
+    expireDays: 30,
+    resumeThreshold: 60
 };
-
-/*
- * Chat System Server Requirements:
- * 
- * The chat functionality expects these API endpoints on the server:
- * 
- * GET /api/chat/:videoId
- * - Returns array of available chat timecodes for the video
- * - Response: [1, 5, 12, 23, ...] (seconds where chat messages exist)
- * 
- * GET /api/chat/:videoId/:startTime/:endTime  
- * - Returns chat messages for the specified time range
- * - Response: [{offset: 123, commenter: {display_name: "User"}, message: {body: "Hello!"}}, ...]
- * 
- * Chat data should be stored as JSON files in a format similar to:
- * comments/{videoId}.json - contains the timecode array
- * comments/{videoId}_messages.json - contains all messages with timestamps
- */
 
 // Clean up old saved positions
 function cleanupOldPositions() {
@@ -43,10 +25,9 @@ function cleanupOldPositions() {
     });
 }
 
-// Save video position
 function saveVideoPosition(videoId, currentTime, duration) {
     if (currentTime < VIDEO_POSITION_CONFIG.minSaveTime) return;
-    if (currentTime > duration - 30) return; // Don't save if near the end
+    if (currentTime > duration - 30) return;
     
     const positionData = {
         time: currentTime,
@@ -57,7 +38,6 @@ function saveVideoPosition(videoId, currentTime, duration) {
     localStorage.setItem(`video_position_${videoId}`, JSON.stringify(positionData));
 }
 
-// Get saved video position
 function getSavedVideoPosition(videoId) {
     try {
         const data = localStorage.getItem(`video_position_${videoId}`);
@@ -67,12 +47,10 @@ function getSavedVideoPosition(videoId) {
     }
 }
 
-// Clear saved position for a video
 function clearVideoPosition(videoId) {
     localStorage.removeItem(`video_position_${videoId}`);
 }
 
-// Format time for display
 function formatTime(seconds) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -84,23 +62,15 @@ function formatTime(seconds) {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Auto-resume video without prompt
 function autoResumeVideo(player, savedTime) {
-    console.log(`Setting up auto-resume to ${formatTime(savedTime)}`);
-    
-    // Wait for user to press play
     const onFirstPlay = () => {
-        console.log('User pressed play, now seeking to saved position');
         player.off('play', onFirstPlay);
-        
-        // Pause immediately to seek
         player.pause();
         
         const onSeeked = () => {
-            console.log('Resume seek completed, resuming playback');
             player.isResuming = false;
             player.off('seeked', onSeeked);
-            player.play(); // Resume playback after seeking
+            player.play();
         };
         
         player.isResuming = true;
@@ -108,9 +78,8 @@ function autoResumeVideo(player, savedTime) {
         player.currentTime(savedTime);
     };
     
-    player.isResuming = true; // Set flag to prevent other interference
+    player.isResuming = true;
     player.on('play', onFirstPlay);
-    console.log('Auto-resume will trigger on first play');
 }
 
 class VODArchive {
@@ -125,14 +94,13 @@ class VODArchive {
         this.hasResumed = false;
         this.shouldResume = false;
         this.startOverBtn = null;
-        this.maxCachedItems = 200; // Limit DOM elements in memory
-        this.itemAccessTimes = new Map(); // Track when items were last accessed
+        this.maxCachedItems = 200;
+        this.itemAccessTimes = new Map();
         
-        // Chat-related properties
         this.chatOpen = false;
         this.chatTimecodes = new Set();
         this.lastChatTime = -1;
-        this.chatSeekThreshold = 5; // seconds
+        this.chatSeekThreshold = 5;
         
         this.init();
         cleanupOldPositions();
@@ -150,19 +118,13 @@ class VODArchive {
             const response = await fetch('/api/videos');
             const data = await response.json();
             
-            console.log('Raw data structure:', Array.isArray(data) ? 'Array' : 'Object');
-            console.log('First few items:', data.slice(0, 3));
-            
-            // The API returns an array, not an object
             this.videos = data.map(video => ({
-                id: video.vodid, // Use vodid as the ID
+                id: video.vodid,
                 title: video.title,
                 description: video.description,
                 date: new Date(video.date),
-                duration: video.duration // This will now be available!
-            })).sort((a, b) => b.date - a.date); // Sort by date, newest first
-            
-            console.log('Processed videos:', this.videos.slice(0, 3).map(v => ({ id: v.id, title: v.title })));
+                duration: video.duration
+            })).sort((a, b) => b.date - a.date);
             
             document.getElementById('loadingState').style.display = 'none';
             document.getElementById('videoGrid').style.display = 'block';
@@ -174,13 +136,11 @@ class VODArchive {
     }
 
     setupEventListeners() {
-        // Title filter
         document.getElementById('titleFilter').addEventListener('input', () => {
             this.currentPage = 1;
             this.filterAndPaginate();
         });
 
-        // Date filters
         ['fromMonth', 'fromDay', 'fromYear', 'toMonth', 'toDay', 'toYear'].forEach(id => {
             document.getElementById(id).addEventListener('input', () => {
                 this.currentPage = 1;
@@ -188,7 +148,6 @@ class VODArchive {
             });
         });
 
-        // Clear filters
         document.getElementById('clearFilters').addEventListener('click', () => {
             document.getElementById('titleFilter').value = '';
             ['fromMonth', 'fromDay', 'fromYear', 'toMonth', 'toDay', 'toYear'].forEach(id => {
@@ -198,7 +157,6 @@ class VODArchive {
             this.filterAndPaginate();
         });
 
-        // Pagination
         document.getElementById('prevBtn').addEventListener('click', () => {
             if (this.currentPage > 1) {
                 this.currentPage--;
@@ -221,7 +179,6 @@ class VODArchive {
             this.filterAndPaginate();
         });
 
-        // Items per page
         document.getElementById('itemsPerPage').addEventListener('change', (e) => {
             this.itemsPerPage = parseInt(e.target.value);
             document.getElementById('bottomItemsPerPage').value = e.target.value;
@@ -237,7 +194,6 @@ class VODArchive {
             this.scrollToTop();
         });
 
-        // Bottom pagination with scroll to top
         document.getElementById('bottomPrevBtn').addEventListener('click', () => {
             if (this.currentPage > 1) {
                 this.currentPage--;
@@ -263,17 +219,14 @@ class VODArchive {
             this.scrollToTop();
         });
 
-        // Chat toggle
         document.getElementById('chatToggle').addEventListener('click', () => {
             this.toggleChat();
         });
         
-        // Chat close
         document.getElementById('chatClose').addEventListener('click', () => {
             this.closeChat();
         });
 
-        // Pagination on resize
         window.addEventListener('resize', () => {
             this.updatePagination();
         });
@@ -304,16 +257,14 @@ class VODArchive {
 
         if (toMonth && toDay && toYear) {
             toDate = new Date(toYear, toMonth - 1, toDay);
-            toDate.setHours(23, 59, 59, 999); // End of day
+            toDate.setHours(23, 59, 59, 999);
         }
 
         this.filteredVideos = this.videos.filter(video => {
-            // Title filter
             if (titleFilter && !video.title.toLowerCase().includes(titleFilter)) {
                 return false;
             }
 
-            // Date range filter
             if (fromDate && video.date < fromDate) {
                 return false;
             }
@@ -334,18 +285,15 @@ class VODArchive {
     updatePagination() {
         const totalPages = Math.ceil(this.filteredVideos.length / this.itemsPerPage);
         
-        // Check if we're on a phone-sized screen
         const isPhone = window.innerWidth <= 480;
         const videoCountText = isPhone ? '' : ` (${this.filteredVideos.length} videos)`;
         
-        // Update top pagination
         document.getElementById('pageInput').value = this.currentPage;
         document.getElementById('pageInput').max = totalPages;
         document.getElementById('pageInfo').textContent = `of ${totalPages}${videoCountText}`;
         document.getElementById('prevBtn').disabled = this.currentPage <= 1;
         document.getElementById('nextBtn').disabled = this.currentPage >= totalPages;
         
-        // Update bottom pagination
         document.getElementById('bottomPageInput').value = this.currentPage;
         document.getElementById('bottomPageInput').max = totalPages;
         document.getElementById('bottomPageInfo').textContent = `of ${totalPages}${videoCountText}`;
@@ -359,15 +307,12 @@ class VODArchive {
         const endIndex = startIndex + this.itemsPerPage;
         const videosToShow = this.filteredVideos.slice(startIndex, endIndex);
 
-        // Only rebuild if grid is empty or we have a completely different set of videos
         const existingItems = grid.querySelectorAll('.video-item');
         const shouldRebuild = existingItems.length === 0;
 
         if (shouldRebuild) {
-            console.log('Rebuilding video grid');
             this.buildVideoGrid(grid, videosToShow);
         } else {
-            console.log('Updating existing video grid');
             this.updateVideoGrid(grid, videosToShow);
         }
     }
@@ -406,14 +351,11 @@ class VODArchive {
         const existingItems = Array.from(grid.querySelectorAll('.video-item'));
         const now = Date.now();
         
-        // Mark currently shown videos as recently accessed
         videosToShow.forEach(video => {
             this.itemAccessTimes.set(video.id, now);
         });
         
-        // Clean up excess items if we're over the cache limit
         if (existingItems.length > this.maxCachedItems) {
-            // Sort items by last access time (oldest first)
             const itemsWithTimes = existingItems.map(item => ({
                 element: item,
                 videoId: item.dataset.videoId,
@@ -429,15 +371,12 @@ class VODArchive {
         
         const remainingItems = Array.from(grid.querySelectorAll('.video-item'));
         
-        // Hide all existing items first
         remainingItems.forEach(item => item.style.display = 'none');
         
-        // Show and update items for current page
         videosToShow.forEach((video, index) => {
             let item = remainingItems.find(el => el.dataset.videoId === video.id);
             
             if (!item) {
-                // Create new item if it doesn't exist
                 const savedPosition = getSavedVideoPosition(video.id);
                 const hasResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
                 
@@ -468,7 +407,6 @@ class VODArchive {
                 grid.appendChild(item);
                 this.itemAccessTimes.set(video.id, now);
             } else {
-                // Update existing item's resume overlay
                 const savedPosition = getSavedVideoPosition(video.id);
                 const hasResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
                 const container = item.querySelector('.video-thumbnail-container');
@@ -485,7 +423,6 @@ class VODArchive {
                     overlay.remove();
                 }
                 
-                // Update access time for existing item
                 this.itemAccessTimes.set(video.id, now);
             }
             
@@ -494,26 +431,21 @@ class VODArchive {
     }
 
     async loadVideo(videoId) {
-        console.log('Loading video with ID:', videoId);
         const video = this.videos.find(v => v.id === videoId);
-        console.log('Found video:', video ? { id: video.id, title: video.title } : 'NOT FOUND');
         if (!video) return;
 
         this.currentVideo = video;
         this.hasResumed = false;
         this.shouldResume = false;
 
-        // Clear existing timer
         if (this.saveTimer) {
             clearInterval(this.saveTimer);
             this.saveTimer = null;
         }
 
-        // Update URL
         history.pushState({ videoId }, video.title, `#${videoId}`);
         document.title = `Macaw45 VOD Archive: ${video.title}`;
 
-        // Show video info
         document.getElementById('videoTitle').textContent = video.title;
         document.getElementById('videoSource').innerHTML = `originally from <a href="https://twitch.tv/videos/${videoId}" target="_blank">twitch.tv/videos/${videoId}</a>`;
         document.getElementById('videoDate').textContent = video.date.toLocaleDateString('en-US', { 
@@ -524,36 +456,30 @@ class VODArchive {
         document.getElementById('videoDesc').textContent = video.description || '(no description)';
         document.getElementById('infoSection').style.display = 'block';
 
-        // Dispose of existing player and cleanup
         if (this.player) {
             this.player.dispose();
             this.player = null;
         }
 
-        // Clean up any existing videojs instances
         const existingPlayer = videojs.getPlayer('videoPlayer');
         if (existingPlayer) {
             existingPlayer.dispose();
         }
 
-        // Remove start over button
         this.removeStartOverButton();
 
-        // Show video container and hide placeholder
         const placeholder = document.getElementById('videoPlaceholder');
         const playerElement = document.getElementById('videoPlayer');
         const chatToggle = document.getElementById('chatToggle');
         const videoContainer = document.getElementById('videoContainer');
         
         if (placeholder) placeholder.style.display = 'none';
-        if (chatToggle) chatToggle.style.display = 'none'; // Hidden for now
+        if (chatToggle) chatToggle.style.display = 'none';
 
-        // Recreate the video element to ensure clean state
         if (playerElement) {
             playerElement.remove();
         }
 
-        // Create new video element
         const newVideoElement = document.createElement('video');
         newVideoElement.id = 'videoPlayer';
         newVideoElement.className = 'video-js vjs-default-skin';
@@ -562,57 +488,46 @@ class VODArchive {
         newVideoElement.setAttribute('data-setup', '{}');
         newVideoElement.setAttribute('poster', `/api/thumbnail/720/${videoId}`);
 
-        // Insert the new video element
         videoContainer.appendChild(newVideoElement);
 
-        // Add loading indicator
         const loadingIndicator = document.createElement('div');
         loadingIndicator.className = 'video-loading-indicator';
         loadingIndicator.innerHTML = '<div class="video-loading-spinner"></div>';
         videoContainer.appendChild(loadingIndicator);
 
-        // Initialize Video.js player
         this.player = videojs('videoPlayer', {
             fluid: true,
             responsive: true,
             aspectRatio: '16:9'
         });
 
-        // Set up position tracking immediately (no async needed for localStorage)
         this.setupVideoPositionTracking(videoId);
         this.setupVideoTimeTracking(this.player, videoId);
 
         this.player.ready(() => {
-            console.log('Player ready, loading video...');
             this.player.src({
                 src: `/api/video/${videoId}`,
                 type: 'application/x-mpegURL'
             });
         });
 
-        // Load chat timecodes if chat is open
         if (this.chatOpen) {
             this.loadChatTimecodes(videoId);
         }
 
-        // Scroll to video
         document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
         
-        // Update the video list to show any new resume indicators
         this.renderVideos();
     }
 
     setupVideoPositionTracking(videoId) {
         const player = this.player;
         
-        // Disable player controls until we're ready
         player.controls(false);
         
-        // Check saved position immediately (localStorage is synchronous)
         const savedPosition = getSavedVideoPosition(videoId);
         const shouldAutoResume = savedPosition && savedPosition.time > VIDEO_POSITION_CONFIG.resumeThreshold;
         
-        // Create start over button immediately if there's a saved position
         if (shouldAutoResume) {
             const titleElement = document.getElementById('videoTitle');
             if (titleElement && !this.startOverBtn) {
@@ -623,32 +538,26 @@ class VODArchive {
                 this.startOverBtn.addEventListener('click', () => {
                     clearVideoPosition(videoId);
                     
-                    // Reset resume flags first
                     this.hasResumed = false;
                     this.shouldResume = false;
                     player.isResuming = false;
                     
-                    // Remove any existing auto-resume event listeners
                     player.off('play');
                     
-                    // Simply seek to beginning - works even if video hasn't been played
                     player.currentTime(0);
                     
-                    // Re-setup the normal event listeners (without auto-resume)
                     this.setupNormalEventListeners(player, videoId);
                     
                     this.removeStartOverButton();
-                    this.renderVideos(); // Refresh the video list to remove resume indicators
+                    this.renderVideos();
                 });
                 
                 titleElement.appendChild(this.startOverBtn);
             }
             
-            // Set resume flags immediately
             this.shouldResume = true;
         }
 
-        // Save position periodically
         const savePosition = () => {
             if (player.isResuming) return;
             
@@ -660,7 +569,6 @@ class VODArchive {
             }
         };
 
-        // Start/stop periodic saving
         const startSaving = () => {
             if (this.saveTimer) clearInterval(this.saveTimer);
             this.saveTimer = setInterval(savePosition, VIDEO_POSITION_CONFIG.saveInterval * 1000);
@@ -673,7 +581,6 @@ class VODArchive {
             }
         };
 
-        // Auto-resume logic
         const doAutoResume = () => {
             if (this.hasResumed || player.isResuming || !this.shouldResume) return;
             
@@ -681,26 +588,20 @@ class VODArchive {
             autoResumeVideo(player, savedPosition.time);
         };
 
-        // Enable controls and handle auto-resume when metadata loads
         const onMetadataLoaded = () => {
-            // Remove loading indicator
             const loadingIndicator = document.querySelector('.video-loading-indicator');
             if (loadingIndicator) {
                 loadingIndicator.remove();
             }
             
-            // Enable controls now that we can properly handle playback
             player.controls(true);
             
-            // Do auto-resume if needed
             setTimeout(doAutoResume, 50);
         };
 
-        // Event listeners
         player.on('loadedmetadata', onMetadataLoaded);
 
         player.on('play', () => {
-            // If we should resume but haven't yet, trigger auto-resume immediately
             if (this.shouldResume && !this.hasResumed) {
                 player.pause();
                 doAutoResume();
@@ -728,19 +629,17 @@ class VODArchive {
             stopSaving();
             clearVideoPosition(videoId);
             this.removeStartOverButton();
-            this.renderVideos(); // Refresh the video list to remove resume indicators
+            this.renderVideos();
         });
 
         window.addEventListener('beforeunload', savePosition);
 
-        // Handle case where metadata is already loaded
         if (player.readyState() >= 1) {
             onMetadataLoaded();
         }
     }
 
     setupNormalEventListeners(player, videoId) {
-        // Save position periodically
         const savePosition = () => {
             if (player.isResuming) return;
             
@@ -752,7 +651,6 @@ class VODArchive {
             }
         };
 
-        // Start/stop periodic saving
         const startSaving = () => {
             if (this.saveTimer) clearInterval(this.saveTimer);
             this.saveTimer = setInterval(savePosition, VIDEO_POSITION_CONFIG.saveInterval * 1000);
@@ -765,7 +663,6 @@ class VODArchive {
             }
         };
 
-        // Normal event listeners (no auto-resume)
         player.on('play', () => {
             if (!player.isResuming) {
                 startSaving();
@@ -798,11 +695,9 @@ class VODArchive {
         player.on('timeupdate', () => {
             const currentTime = Math.floor(player.currentTime());
             
-            // Update URL hash with current time
             if (currentTime !== this.lastChatTime && currentTime > 0) {
                 history.replaceState({}, '', `#${videoId}?t=${currentTime}`);
                 
-                // Load chat for current time range if chat is open
                 if (this.chatOpen && this.chatTimecodes.size > 0) {
                     let startTime = Math.max(currentTime - this.chatSeekThreshold, this.lastChatTime + 1);
                     if (currentTime < this.lastChatTime) {
@@ -811,7 +706,6 @@ class VODArchive {
                     
                     for (let t = startTime; t <= currentTime + this.chatSeekThreshold; t++) {
                         if (this.chatTimecodes.has(t)) {
-                            // Load chat messages for this time range
                             this.loadChatForTimeRange(videoId, Math.max(0, currentTime - 30), currentTime + 10);
                             break;
                         }
@@ -822,11 +716,9 @@ class VODArchive {
             }
         });
         
-        // Handle seeking
         player.on('seeked', () => {
             const currentTime = Math.floor(player.currentTime());
             if (this.chatOpen) {
-                // Load chat around the seeked position
                 this.loadChatForTimeRange(videoId, Math.max(0, currentTime - 30), currentTime + 10);
             }
         });
@@ -850,7 +742,6 @@ class VODArchive {
         videoSection.classList.add('chat-open');
         this.chatOpen = true;
         
-        // Load chat for current video if available
         if (this.currentVideo && this.player) {
             this.loadChatTimecodes(this.currentVideo.id);
         }
@@ -873,9 +764,7 @@ class VODArchive {
             if (response.ok) {
                 const timecodes = await response.json();
                 this.chatTimecodes = new Set(timecodes);
-                console.log(`Loaded ${timecodes.length} chat timecodes for video ${videoId}`);
             } else {
-                console.log(`No chat data available for video ${videoId}`);
                 this.chatTimecodes = new Set();
                 this.showNoChatMessage();
             }
@@ -906,7 +795,6 @@ class VODArchive {
     displayChatMessages(messages, startTime, endTime) {
         const chatMessages = document.getElementById('chatMessages');
         
-        // Clear loading or existing messages for this time range
         chatMessages.innerHTML = '';
         
         if (messages.length === 0) {
@@ -919,7 +807,6 @@ class VODArchive {
             chatMessages.appendChild(messageElement);
         });
         
-        // Scroll to bottom to show latest messages
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
@@ -938,7 +825,6 @@ class VODArchive {
         const text = document.createElement('span');
         text.className = 'chat-text';
         
-        // Simple text for now - could be enhanced with emote parsing
         if (message.message && message.message.body) {
             text.textContent = message.message.body;
         } else {
@@ -982,15 +868,12 @@ class VODArchive {
     }
 }
 
-// Initialize the app
 const archive = new VODArchive();
 
-// Handle browser back/forward
 window.addEventListener('popstate', (e) => {
     if (e.state && e.state.videoId) {
         archive.loadVideo(e.state.videoId);
     } else {
-        // Back to main page
         if (archive.player) {
             archive.player.dispose();
             archive.player = null;
@@ -1003,7 +886,6 @@ window.addEventListener('popstate', (e) => {
     }
 });
 
-// Stop double tap to zoom
 document.ondblclick = function (e) {
     e.preventDefault();
-}
+};
