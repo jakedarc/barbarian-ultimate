@@ -178,6 +178,15 @@ a:hover {
     position: relative;
 }
 
+.video-js .vjs-time-control {
+    display: block;
+    min-width: 0;
+}
+
+.video-js .vjs-remaining-time {
+    display: none;
+}
+
 .video-loading-indicator {
     position: absolute;
     top: 50%;
