@@ -544,14 +544,7 @@ class VODArchive {
             // Don't load messages until play starts
         }
 
-        // Show chat toggle button when video is loaded - move it next to the title
-        const chatToggleBtn = document.getElementById('chatToggle');
-        const titleElement = document.getElementById('videoTitle');
-        if (chatToggleBtn && titleElement) {
-            chatToggleBtn.style.display = 'inline-block';
-            // Move the chat toggle to be next to the video title (same line as Start Over)
-            titleElement.appendChild(chatToggleBtn);
-        }
+        this.createChatDrawerToggle();
 
         document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
         
@@ -811,11 +804,18 @@ class VODArchive {
 
     openChat() {
         const chatSidebar = document.getElementById('chatSidebar');
-        const chatToggle = document.getElementById('chatToggle');
+        const drawerToggle = document.getElementById('chatDrawerToggle');
         const videoSection = document.querySelector('.video-section');
         
+        // Show sidebar with animation
         chatSidebar.style.display = 'flex';
-        chatToggle.textContent = 'Hide Chat';
+        
+        // Force reflow for animation
+        setTimeout(() => {
+            chatSidebar.classList.add('show');
+        }, 10);
+        
+        if (drawerToggle) drawerToggle.classList.add('chat-open');
         videoSection.classList.add('chat-open');
         this.chatOpen = true;
         
@@ -830,13 +830,47 @@ class VODArchive {
 
     closeChat() {
         const chatSidebar = document.getElementById('chatSidebar');
-        const chatToggle = document.getElementById('chatToggle');
+        const drawerToggle = document.getElementById('chatDrawerToggle');
         const videoSection = document.querySelector('.video-section');
         
-        chatSidebar.style.display = 'none';
-        chatToggle.textContent = 'Show Chat';
+        // Animate out
+        chatSidebar.classList.remove('show');
+        if (drawerToggle) drawerToggle.classList.remove('chat-open');
         videoSection.classList.remove('chat-open');
+        
+        // Hide after animation
+        setTimeout(() => {
+            chatSidebar.style.display = 'none';
+        }, 300);
+        
         this.chatOpen = false;
+    }
+
+    createChatDrawerToggle() {
+        // Check if drawer toggle already exists
+        let drawerToggle = document.getElementById('chatDrawerToggle');
+        if (drawerToggle) {
+            return drawerToggle;
+        }
+
+        // Create new drawer toggle
+        drawerToggle = document.createElement('div');
+        drawerToggle.id = 'chatDrawerToggle';
+        drawerToggle.className = 'chat-drawer-toggle';
+        drawerToggle.innerHTML = '<div class="chat-drawer-icon"></div>';
+        
+        // Add click handler
+        drawerToggle.addEventListener('click', () => {
+            this.toggleChat();
+        });
+        
+        // Add to video container
+        const videoContainer = document.getElementById('videoContainer');
+        if (videoContainer) {
+            videoContainer.appendChild(drawerToggle);
+        }
+
+        return drawerToggle;
     }
 
     async loadChatTimecodes(videoId) {

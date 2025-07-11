@@ -658,3 +658,117 @@ a:hover {
         display: block;
     }
 }
+
+/* Chat Toggle Button - positioned to the side of video */
+.chat-drawer-toggle {
+    position: absolute;
+    right: -35px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 35px;
+    height: 35px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 100;
+}
+
+.chat-drawer-toggle:hover {
+    background: #3a3a3a;
+    border-color: #555;
+}
+
+.chat-drawer-toggle.chat-open {
+    background: #3a3a3a;
+    border-color: #666;
+}
+
+/* Chat icon - simple person symbol */
+.chat-drawer-icon {
+    width: 16px;
+    height: 16px;
+    position: relative;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+/* Person head */
+.chat-drawer-icon::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    background: #ccc;
+    border-radius: 50%;
+}
+
+/* Person body */
+.chat-drawer-icon::after {
+    content: '';
+    position: absolute;
+    bottom: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 8px;
+    background: #ccc;
+    border-radius: 2px 2px 4px 4px;
+}
+
+.chat-drawer-toggle:hover .chat-drawer-icon {
+    opacity: 1;
+}
+
+/* Update video-section to be positioned relative for the toggle */
+.video-section {
+    position: relative;
+}
+
+/* Smooth chat sidebar animations */
+.chat-sidebar {
+    transition: all 0.3s ease;
+    transform: translateX(100%);
+    opacity: 0;
+}
+
+.chat-sidebar.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+/* Adjust video container positioning when chat is open */
+.video-section.chat-open .video-container {
+    transition: all 0.3s ease;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .chat-drawer-toggle {
+        right: -32px;
+        width: 32px;
+        height: 32px;
+    }
+    
+    .chat-drawer-icon {
+        width: 14px;
+        height: 14px;
+    }
+    
+    .chat-drawer-icon::before {
+        width: 4px;
+        height: 4px;
+    }
+    
+    .chat-drawer-icon::after {
+        width: 7px;
+        height: 7px;
+    }
+}
