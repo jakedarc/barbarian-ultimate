@@ -103,7 +103,7 @@ class VODArchive {
         this.chatSeekThreshold = 5;
         
         // Chat caching
-        this.emoteCache = { firstParty: {}, thirdParty: {} }; // Cache emote mappings
+        this.emoteCache = { firstParty: {}, thirdParty: {}, cheers: {} }; // Cache emote mappings
         
         this.init();
         cleanupOldPositions();
@@ -119,9 +119,10 @@ class VODArchive {
 
     async loadEmoteMappings() {
         try {
-            const [firstPartyResponse, thirdPartyResponse] = await Promise.all([
+            const [firstPartyResponse, thirdPartyResponse, cheersResponse] = await Promise.all([
                 fetch('/api/emotes/first-party'),
-                fetch('/api/emotes/third-party')
+                fetch('/api/emotes/third-party'),
+                fetch('/api/emotes/cheers')
             ]);
             
             if (firstPartyResponse.ok) {
@@ -130,8 +131,11 @@ class VODArchive {
             if (thirdPartyResponse.ok) {
                 this.emoteCache.thirdParty = await thirdPartyResponse.json();
             }
+            if (cheersResponse.ok) {
+                this.emoteCache.cheers = await cheersResponse.json();
+            }
             
-            console.log(`Loaded ${Object.keys(this.emoteCache.firstParty).length} first-party and ${Object.keys(this.emoteCache.thirdParty).length} third-party emotes`);
+            console.log(`Loaded ${Object.keys(this.emoteCache.firstParty).length} first-party, ${Object.keys(this.emoteCache.thirdParty).length} third-party emotes, and ${Object.keys(this.emoteCache.cheers).length} cheer providers`);
         } catch (error) {
             console.error('Failed to load emote mappings:', error);
         }
@@ -938,9 +942,50 @@ class VODArchive {
                     };
                     messageText.appendChild(emoteImg);
                 } else {
-                    // This is text - check for emote names using our cached mappings
+                    // This is text - check for emote names and cheers using our cached mappings
                     const words = fragment.text.split(/\s+/);
                     words.forEach((word, index) => {
+                        // Check if word is a cheer (bits) like "cheer100"
+                        const cheerMatch = word.match(/^([a-zA-Z]+)(\d+)$/);
+                        if (cheerMatch && this.emoteCache.cheers[cheerMatch[1]]) {
+                            const provider = cheerMatch[1];
+                            const bits = parseInt(cheerMatch[2]);
+                            
+                            // Round cheer amount to available tiers
+                            let cheerAmount = 1;
+                            for (const value of this.emoteCache.cheers[provider]) {
+                                if (bits >= value) cheerAmount = value;
+                            }
+                            
+                            // Create cheer image
+                            const cheerImg = document.createElement('img');
+                            cheerImg.className = 'chat-emote';
+                            cheerImg.src = `/api/emote/twitchBits/${provider}/${cheerAmount}`;
+                            cheerImg.alt = word;
+                            cheerImg.title = word;
+                            cheerImg.style.height = '20px';
+                            cheerImg.style.verticalAlign = 'middle';
+                            cheerImg.style.margin = '0 2px';
+                            cheerImg.onerror = function() {
+                                console.warn(`Cheer not found: ${provider}/${cheerAmount} (${word})`);
+                                this.style.display = 'none';
+                                const textSpan = document.createElement('span');
+                                textSpan.textContent = word;
+                                textSpan.style.fontFamily = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Roboto", "Helvetica", "Arial", sans-serif';
+                                this.parentNode.insertBefore(textSpan, this.nextSibling);
+                            };
+                            messageText.appendChild(cheerImg);
+                            
+                            // Add the number after the cheer image
+                            const numberSpan = document.createElement('span');
+                            numberSpan.textContent = bits + ' ';
+                            numberSpan.style.color = '#ff6347'; // Orange-red for bit numbers
+                            numberSpan.style.fontWeight = 'bold';
+                            messageText.appendChild(numberSpan);
+                            
+                            return; // Skip other checks for this word
+                        }
+                        
                         // Check if word is an emote using cached mappings
                         let emoteId = null;
                         let emoteType = null;

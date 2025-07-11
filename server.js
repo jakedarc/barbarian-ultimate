@@ -295,6 +295,22 @@ app.get('/api/emotes/third-party', async (req, res) => {
   }
 });
 
+app.get('/api/emotes/cheers', async (req, res) => {
+  try {
+    const response = await fetch('https://barbarian.men/macaw45/cheers.json');
+    if (!response.ok) {
+      return res.status(404).json({ error: 'Cheers not found' });
+    }
+    
+    const cheers = await response.json();
+    res.set('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    res.json(cheers);
+  } catch (error) {
+    console.error('Error fetching cheers:', error);
+    res.status(500).json({ error: 'Failed to fetch cheers' });
+  }
+});
+
 // Chat API endpoints - proxy to original site's chat data
 app.get('/api/chat/:videoId', async (req, res) => {
   try {
