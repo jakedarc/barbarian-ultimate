@@ -102,15 +102,39 @@ class VODArchive {
         this.lastChatTime = -1;
         this.chatSeekThreshold = 5;
         
+        // Chat caching
+        this.emoteCache = { firstParty: {}, thirdParty: {} }; // Cache emote mappings
+        
         this.init();
         cleanupOldPositions();
     }
 
     async init() {
         await this.loadVideos();
+        await this.loadEmoteMappings(); // Load emote mappings upfront
         this.setupEventListeners();
         this.filterAndPaginate();
         this.checkURLForVideo();
+    }
+
+    async loadEmoteMappings() {
+        try {
+            const [firstPartyResponse, thirdPartyResponse] = await Promise.all([
+                fetch('/api/emotes/first-party'),
+                fetch('/api/emotes/third-party')
+            ]);
+            
+            if (firstPartyResponse.ok) {
+                this.emoteCache.firstParty = await firstPartyResponse.json();
+            }
+            if (thirdPartyResponse.ok) {
+                this.emoteCache.thirdParty = await thirdPartyResponse.json();
+            }
+            
+            console.log(`Loaded ${Object.keys(this.emoteCache.firstParty).length} first-party and ${Object.keys(this.emoteCache.thirdParty).length} third-party emotes`);
+        } catch (error) {
+            console.error('Failed to load emote mappings:', error);
+        }
     }
 
     async loadVideos() {
@@ -513,6 +537,16 @@ class VODArchive {
 
         if (this.chatOpen) {
             this.loadChatTimecodes(videoId);
+            // Don't load messages until play starts
+        }
+
+        // Show chat toggle button when video is loaded - move it next to the title
+        const chatToggleBtn = document.getElementById('chatToggle');
+        const titleElement = document.getElementById('videoTitle');
+        if (chatToggleBtn && titleElement) {
+            chatToggleBtn.style.display = 'inline-block';
+            // Move the chat toggle to be next to the video title (same line as Start Over)
+            titleElement.appendChild(chatToggleBtn);
         }
 
         document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
@@ -692,24 +726,23 @@ class VODArchive {
     }
 
     setupVideoTimeTracking(player, videoId) {
+        let hasStartedPlaying = false;
+        let lastDisplayedSecond = -1;
+        
+        player.on('play', () => {
+            hasStartedPlaying = true;
+        });
+        
         player.on('timeupdate', () => {
             const currentTime = Math.floor(player.currentTime());
             
             if (currentTime !== this.lastChatTime && currentTime > 0) {
                 history.replaceState({}, '', `#${videoId}?t=${currentTime}`);
                 
-                if (this.chatOpen && this.chatTimecodes.size > 0) {
-                    let startTime = Math.max(currentTime - this.chatSeekThreshold, this.lastChatTime + 1);
-                    if (currentTime < this.lastChatTime) {
-                        startTime = currentTime - this.chatSeekThreshold;
-                    }
-                    
-                    for (let t = startTime; t <= currentTime + this.chatSeekThreshold; t++) {
-                        if (this.chatTimecodes.has(t)) {
-                            this.loadChatForTimeRange(videoId, Math.max(0, currentTime - 30), currentTime + 10);
-                            break;
-                        }
-                    }
+                // Load and display messages for this second if we haven't already
+                if (hasStartedPlaying && this.chatOpen && currentTime !== lastDisplayedSecond) {
+                    this.loadAndDisplayChatForSecond(videoId, currentTime);
+                    lastDisplayedSecond = currentTime;
                 }
                 
                 this.lastChatTime = currentTime;
@@ -718,10 +751,50 @@ class VODArchive {
         
         player.on('seeked', () => {
             const currentTime = Math.floor(player.currentTime());
-            if (this.chatOpen) {
-                this.loadChatForTimeRange(videoId, Math.max(0, currentTime - 30), currentTime + 10);
+            if (hasStartedPlaying && this.chatOpen) {
+                // Clear chat and load messages for the new position
+                const chatMessages = document.getElementById('chatMessages');
+                chatMessages.innerHTML = '';
+                this.loadAndDisplayChatForSecond(videoId, currentTime);
+                lastDisplayedSecond = currentTime;
             }
         });
+    }
+
+    async loadAndDisplayChatForSecond(videoId, currentTime) {
+        try {
+            const response = await fetch(`/api/chat/${videoId}/${currentTime}/${currentTime}`);
+            if (response.ok) {
+                const messages = await response.json();
+                this.appendChatMessages(messages);
+            }
+        } catch (error) {
+            console.error('Failed to load chat messages:', error);
+        }
+    }
+
+    appendChatMessages(messages) {
+        const chatMessages = document.getElementById('chatMessages');
+        
+        if (messages.length === 0) {
+            return;
+        }
+        
+        // Simply append new messages 
+        messages.forEach(message => {
+            const messageElement = this.createChatMessageElement(message);
+            chatMessages.appendChild(messageElement);
+        });
+        
+        // Remove old messages to keep memory usage reasonable (keep last 50)
+        const allMessages = Array.from(chatMessages.children);
+        if (allMessages.length > 50) {
+            const messagesToRemove = allMessages.slice(0, allMessages.length - 50);
+            messagesToRemove.forEach(msg => msg.remove());
+        }
+        
+        // Always scroll to bottom
+        chatMessages.scrollTo(0, chatMessages.scrollHeight);
     }
 
     toggleChat() {
@@ -741,6 +814,10 @@ class VODArchive {
         chatToggle.textContent = 'Hide Chat';
         videoSection.classList.add('chat-open');
         this.chatOpen = true;
+        
+        // Clear any existing loading text
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.innerHTML = '';
         
         if (this.currentVideo && this.player) {
             this.loadChatTimecodes(this.currentVideo.id);
@@ -766,12 +843,12 @@ class VODArchive {
                 this.chatTimecodes = new Set(timecodes);
             } else {
                 this.chatTimecodes = new Set();
-                this.showNoChatMessage();
+                // Don't show "no chat" message immediately, wait for actual playback
             }
         } catch (error) {
             console.error('Failed to load chat timecodes:', error);
             this.chatTimecodes = new Set();
-            this.showNoChatMessage();
+            // Don't show "no chat" message immediately, wait for actual playback
         }
     }
 
@@ -781,60 +858,145 @@ class VODArchive {
     }
 
     async loadChatForTimeRange(videoId, startTime, endTime) {
-        try {
-            const response = await fetch(`/api/chat/${videoId}/${startTime}/${endTime}`);
-            if (response.ok) {
-                const messages = await response.json();
-                this.displayChatMessages(messages, startTime, endTime);
-            }
-        } catch (error) {
-            console.error('Failed to load chat messages:', error);
-        }
+        // This method is no longer used, keeping for compatibility
+        return;
     }
 
     displayChatMessages(messages, startTime, endTime) {
-        const chatMessages = document.getElementById('chatMessages');
-        
-        chatMessages.innerHTML = '';
-        
-        if (messages.length === 0) {
-            chatMessages.innerHTML = '<div class="chat-loading">No messages in this time range</div>';
-            return;
-        }
-        
-        messages.forEach(message => {
-            const messageElement = this.createChatMessageElement(message);
-            chatMessages.appendChild(messageElement);
-        });
-        
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        // This method is no longer used, keeping for compatibility  
+        return;
     }
 
     createChatMessageElement(message) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'chat-message';
         
-        const timestamp = document.createElement('span');
-        timestamp.className = 'chat-timestamp';
-        timestamp.textContent = formatTime(message.offset);
-        
-        const username = document.createElement('span');
-        username.className = 'chat-username';
-        username.textContent = message.commenter?.display_name || 'Anonymous';
-        
-        const text = document.createElement('span');
-        text.className = 'chat-text';
-        
-        if (message.message && message.message.body) {
-            text.textContent = message.message.body;
-        } else {
-            text.textContent = message.text || '';
+        // Add badges (if any)
+        if (message.message && message.message.user_badges) {
+            message.message.user_badges.forEach(badge => {
+                const badgeImg = document.createElement('img');
+                badgeImg.className = 'chat-badge';
+                badgeImg.src = `/api/emote/twitchBadges/${badge._id}/${badge.version}`;
+                badgeImg.title = badge._id;
+                badgeImg.style.height = '16px';
+                badgeImg.style.marginRight = '4px';
+                badgeImg.style.verticalAlign = 'middle';
+                messageDiv.appendChild(badgeImg);
+            });
         }
         
-        messageDiv.appendChild(timestamp);
+        // Create username
+        const username = document.createElement('span');
+        username.className = 'chat-username';
+        username.textContent = (message.message && message.message.display_name) || 
+                              message.commenter?.display_name || 
+                              'Anonymous';
+        // Use user's color if available
+        if (message.message && message.message.user_color) {
+            username.style.color = message.message.user_color;
+        }
         messageDiv.appendChild(username);
-        messageDiv.appendChild(text);
         
+        // Add colon separator (no space before colon)
+        const colon = document.createElement('span');
+        colon.className = 'colon';
+        colon.textContent = ': ';
+        messageDiv.appendChild(colon);
+        
+        // Create message text with emotes
+        const messageText = document.createElement('span');
+        messageText.className = 'chat-text';
+        
+        if (message.message && message.message.fragments) {
+            // Process message fragments (text and emotes)
+            message.message.fragments.forEach(fragment => {
+                if (fragment.emoticon) {
+                    // This is an emote with a direct ID - use it as-is
+                    const emoteImg = document.createElement('img');
+                    emoteImg.className = 'chat-emote';
+                    const emoteId = fragment.emoticon.emoticon_id;
+                    
+                    // Use the direct emote ID from chat data
+                    emoteImg.src = `/api/emote/firstParty/${emoteId}`;
+                    emoteImg.alt = fragment.text;
+                    emoteImg.title = fragment.text;
+                    emoteImg.style.height = '20px';
+                    emoteImg.style.verticalAlign = 'middle';
+                    emoteImg.style.margin = '0 2px';
+                    emoteImg.onerror = function() {
+                        // If first-party fails, try third-party
+                        if (this.src.includes('firstParty')) {
+                            this.src = `/api/emote/thirdParty/${emoteId}`;
+                        } else {
+                            // Both failed, log it and show text fallback
+                            console.warn(`Direct emote not found: ${emoteId} (${fragment.text})`);
+                            this.style.display = 'none';
+                            const textSpan = document.createElement('span');
+                            textSpan.textContent = fragment.text;
+                            this.parentNode.insertBefore(textSpan, this.nextSibling);
+                        }
+                    };
+                    messageText.appendChild(emoteImg);
+                } else {
+                    // This is text - check for emote names using our cached mappings
+                    const words = fragment.text.split(/\s+/);
+                    words.forEach((word, index) => {
+                        // Check if word is an emote using cached mappings
+                        let emoteId = null;
+                        let emoteType = null;
+                        
+                        if (this.emoteCache.thirdParty[word]) {
+                            emoteId = this.emoteCache.thirdParty[word];
+                            emoteType = 'thirdParty';
+                        } else if (this.emoteCache.firstParty[word]) {
+                            emoteId = this.emoteCache.firstParty[word];
+                            emoteType = 'firstParty';
+                        }
+                        
+                        if (emoteId && emoteType) {
+                            // This is an emote - create image
+                            const emoteImg = document.createElement('img');
+                            emoteImg.className = 'chat-emote';
+                            emoteImg.src = `/api/emote/${emoteType}/${emoteId}`;
+                            emoteImg.alt = word;
+                            emoteImg.title = word;
+                            emoteImg.style.height = '20px';
+                            emoteImg.style.verticalAlign = 'middle';
+                            emoteImg.style.margin = '0 2px';
+                            emoteImg.onerror = function() {
+                                // Fallback to text if emote fails to load
+                                console.warn(`Mapped emote not found: ${word} -> ${emoteType}/${emoteId}`);
+                                this.style.display = 'none';
+                                const textSpan = document.createElement('span');
+                                textSpan.textContent = word + (index < words.length - 1 ? ' ' : '');
+                                textSpan.style.fontFamily = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Roboto", "Helvetica", "Arial", sans-serif';
+                                this.parentNode.insertBefore(textSpan, this.nextSibling);
+                            };
+                            messageText.appendChild(emoteImg);
+                        } else {
+                            // Regular text
+                            const textSpan = document.createElement('span');
+                            textSpan.textContent = word;
+                            textSpan.style.fontFamily = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Roboto", "Helvetica", "Arial", sans-serif';
+                            messageText.appendChild(textSpan);
+                        }
+                        
+                        // Add space after word if not last
+                        if (index < words.length - 1) {
+                            messageText.appendChild(document.createTextNode(' '));
+                        }
+                    });
+                }
+            });
+        } else {
+            // Fallback to simple text - ensure emojis work here too
+            const textSpan = document.createElement('span');
+            textSpan.textContent = message.message?.body || message.body || '';
+            textSpan.style.fontFamily = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Roboto", "Helvetica", "Arial", sans-serif';
+            messageText.appendChild(textSpan);
+        }
+        
+        messageDiv.appendChild(messageText);
         return messageDiv;
     }
 
