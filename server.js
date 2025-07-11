@@ -327,14 +327,16 @@ app.get('/api/chat/:videoId', async (req, res) => {
     const timecodesResponse = await fetch(timecodesUrl);
     
     if (!timecodesResponse.ok) {
-      return res.status(404).json({ error: 'No chat data available' });
+      // Return empty array instead of 404 to prevent console spam
+      return res.json([]);
     }
     
     const timecodes = await timecodesResponse.json();
     res.json(timecodes);
   } catch (error) {
     console.error('Error fetching chat timecodes:', error);
-    res.status(500).json({ error: 'Failed to fetch chat timecodes' });
+    // Return empty array instead of 500 error
+    res.json([]);
   }
 });
 
@@ -378,7 +380,8 @@ app.get('/api/chat/:videoId/:startTime/:endTime', async (req, res) => {
     res.json(allMessages);
   } catch (error) {
     console.error('Error fetching chat messages:', error);
-    res.status(500).json({ error: 'Failed to fetch chat messages' });
+    // Return empty array instead of error
+    res.json([]);
   }
 });
 

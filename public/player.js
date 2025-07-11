@@ -843,8 +843,15 @@ class VODArchive {
         try {
             const response = await fetch(`/api/chat/${videoId}`);
             if (response.ok) {
-                const timecodes = await response.json();
-                this.chatTimecodes = new Set(timecodes);
+                const data = await response.json();
+                // Check if data is an array (valid timecodes) or an error object
+                if (Array.isArray(data)) {
+                    this.chatTimecodes = new Set(data);
+                } else {
+                    // Handle case where server returns an error object
+                    this.chatTimecodes = new Set();
+                    console.log('No chat timecodes available for this video');
+                }
             } else {
                 this.chatTimecodes = new Set();
                 // Don't show "no chat" message immediately, wait for actual playback
