@@ -25,16 +25,27 @@ async function loadEmoteMappings() {
   try {
     console.log('Loading emote mappings...');
     
-    const firstPartyResponse = await fetch('https://barbarian.men/macaw45/first_party_emotes.json');
+    const [firstPartyResponse, thirdPartyResponse, cheersResponse] = await Promise.all([
+      fetch('https://barbarian.men/macaw45/first_party_emotes.json'),
+      fetch('https://barbarian.men/macaw45/third_party_emotes.json'),
+      fetch('https://barbarian.men/macaw45/cheers.json')
+    ]);
+    
     if (firstPartyResponse.ok) {
       firstPartyEmotes = await firstPartyResponse.json();
       console.log(`Loaded ${Object.keys(firstPartyEmotes).length} first-party emotes`);
     }
     
-    const thirdPartyResponse = await fetch('https://barbarian.men/macaw45/third_party_emotes.json');
     if (thirdPartyResponse.ok) {
       thirdPartyEmotes = await thirdPartyResponse.json();
       console.log(`Loaded ${Object.keys(thirdPartyEmotes).length} third-party emotes`);
+    }
+    
+    if (cheersResponse.ok) {
+      const cheers = await cheersResponse.json();
+      // Store cheers data in the global variable for the server endpoints
+      global.cheersData = cheers;
+      console.log(`Loaded ${Object.keys(cheers).length} cheer providers`);
     }
   } catch (error) {
     console.error('Failed to load emote mappings:', error);
@@ -297,17 +308,12 @@ app.get('/api/emotes/third-party', async (req, res) => {
 
 app.get('/api/emotes/cheers', async (req, res) => {
   try {
-    const response = await fetch('https://barbarian.men/macaw45/cheers.json');
-    if (!response.ok) {
-      return res.status(404).json({ error: 'Cheers not found' });
-    }
-    
-    const cheers = await response.json();
+    const cheers = global.cheersData || {};
     res.set('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
     res.json(cheers);
   } catch (error) {
-    console.error('Error fetching cheers:', error);
-    res.status(500).json({ error: 'Failed to fetch cheers' });
+    console.error('Error serving cheers:', error);
+    res.status(500).json({ error: 'Failed to serve cheers' });
   }
 });
 
@@ -448,7 +454,8 @@ app.get('/api/sync', async (req, res) => {
   try {
     console.log('Manual sync triggered');
     await syncMetadata();
-    res.json({ message: 'Sync completed' });
+    await loadEmoteMappings(); // Also refresh emote mappings
+    res.json({ message: 'Sync completed - updated metadata and emote mappings' });
   } catch (error) {
     console.error('Manual sync failed:', error);
     res.status(500).json({ error: 'Sync failed' });
@@ -485,8 +492,12 @@ async function startup() {
   await syncMetadata();
   await loadEmoteMappings(); // Load emote mappings
   
-  setInterval(syncMetadata, 60 * 60 * 1000);
-  console.log('Scheduled hourly metadata sync');
+  // Schedule both metadata and emote syncing every hour
+  setInterval(async () => {
+    await syncMetadata();
+    await loadEmoteMappings();
+  }, 60 * 60 * 1000);
+  console.log('Scheduled hourly metadata and emote sync');
   
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
