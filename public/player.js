@@ -533,6 +533,7 @@ class VODArchive {
             aspectRatio: '16:9'
         });
 
+        this.setupSeekOptimization(this.player, videoId);
         this.setupVideoPositionTracking(videoId);
         this.setupVideoTimeTracking(this.player, videoId);
         
@@ -635,6 +636,109 @@ class VODArchive {
         document.querySelector('.video-section').scrollIntoView({ behavior: 'smooth' });
         
         this.renderVideos();
+    }
+
+    setupSeekOptimization(player, videoId) {
+        let isDragging = false;
+        let pendingSeekTime = null;
+        let idleTimer = null;
+        
+        // Store original currentTime method
+        const originalCurrentTime = player.currentTime.bind(player);
+        
+        player.ready(() => {
+            const playerEl = player.el();
+            
+            // Find all possible seek-related elements
+            const seekElements = [
+                playerEl.querySelector('.vjs-progress-control'),
+                playerEl.querySelector('.vjs-progress-holder'),
+                playerEl.querySelector('.vjs-play-progress'),
+                playerEl.querySelector('.vjs-load-progress'),
+                playerEl.querySelector('.vjs-seek-handle')
+            ].filter(el => el !== null);
+            
+            console.log('Found seek elements:', seekElements.map(el => el.className));
+            
+            if (seekElements.length > 0) {
+                // Add mousedown listeners to all seek-related elements
+                seekElements.forEach(element => {
+                    element.addEventListener('mousedown', (e) => {
+                        isDragging = true;
+                        console.log('Seek drag started on:', element.className, '- blocking seeks');
+                    });
+                    
+                    // Add mousemove listener to reset idle timer
+                    element.addEventListener('mousemove', (e) => {
+                        if (isDragging) {
+                            // Clear existing idle timer
+                            if (idleTimer) {
+                                clearTimeout(idleTimer);
+                            }
+                            
+                            // Set new idle timer
+                            idleTimer = setTimeout(() => {
+                                if (isDragging && pendingSeekTime !== null) {
+                                    console.log(`⏰ IDLE seek to ${pendingSeekTime.toFixed(2)}s (mouse idle for 1s)`);
+                                    originalCurrentTime(pendingSeekTime);
+                                    pendingSeekTime = null;
+                                }
+                            }, 500);
+                        }
+                    });
+                });
+                
+                // Track when dragging ends
+                const handleMouseUp = () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        console.log('Seek drag ended');
+                        
+                        // Clear idle timer
+                        if (idleTimer) {
+                            clearTimeout(idleTimer);
+                            idleTimer = null;
+                        }
+                        
+                        // If we have a pending seek, execute it now
+                        if (pendingSeekTime !== null) {
+                            console.log(`🎯 FINAL seek to ${pendingSeekTime.toFixed(2)}s (mouse up)`);
+                            originalCurrentTime(pendingSeekTime);
+                            pendingSeekTime = null;
+                        }
+                    }
+                };
+                
+                // Listen for mouseup on document to catch releases outside the seek bar
+                document.addEventListener('mouseup', handleMouseUp);
+                
+                // Also add mouseup to each seek element
+                seekElements.forEach(element => {
+                    element.addEventListener('mouseup', handleMouseUp);
+                });
+            } else {
+                console.warn('No seek elements found for drag detection');
+            }
+        });
+        
+        // Override currentTime to block seeks during drag
+        player.currentTime = function(time) {
+            // If no time provided, just return current time
+            if (time === undefined) {
+                return originalCurrentTime();
+            }
+            
+            // If dragging, store the seek time but don't execute it
+            if (isDragging) {
+                pendingSeekTime = time;
+                console.log(`🚫 BLOCKED seek to ${time.toFixed(2)}s (dragging)`);
+                return originalCurrentTime(); // Return current time without seeking
+            }
+            
+            // If not dragging, execute seek immediately
+            console.log(`✅ IMMEDIATE seek to ${time.toFixed(2)}s (not dragging)`);
+            return originalCurrentTime(time);
+        };
     }
 
     setupVideoPositionTracking(videoId) {
