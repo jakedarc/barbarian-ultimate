@@ -246,10 +246,6 @@ class VODArchive {
             this.filterAndPaginate();
             this.scrollToTop();
         });
-
-        document.getElementById('chatToggle').addEventListener('click', () => {
-            this.toggleChat();
-        });
         
         document.getElementById('chatClose').addEventListener('click', () => {
             this.closeChat();
@@ -500,11 +496,9 @@ class VODArchive {
 
         const placeholder = document.getElementById('videoPlaceholder');
         const playerElement = document.getElementById('videoPlayer');
-        const chatToggle = document.getElementById('chatToggle');
         const videoContainer = document.getElementById('videoContainer');
         
         if (placeholder) placeholder.style.display = 'none';
-        if (chatToggle) chatToggle.style.display = 'none';
 
         if (playerElement) {
             playerElement.remove();
@@ -550,7 +544,6 @@ class VODArchive {
             
             // Add click handlers to set focus
             playerEl.addEventListener('click', (e) => {
-                console.log('Player clicked, setting focus');
                 playerEl.focus();
                 if (videoEl) {
                     videoEl.focus();
@@ -560,7 +553,6 @@ class VODArchive {
             // Also try focusing on the video element directly
             if (videoEl) {
                 videoEl.addEventListener('click', (e) => {
-                    console.log('Video element clicked, setting focus');
                     videoEl.focus();
                     e.stopPropagation();
                 });
@@ -1320,7 +1312,6 @@ window.addEventListener('popstate', (e) => {
         }
         document.getElementById('videoPlaceholder').style.display = 'flex';
         document.getElementById('videoPlayer').style.display = 'none';
-        document.getElementById('chatToggle').style.display = 'none';
         document.getElementById('infoSection').style.display = 'none';
         document.title = 'Macaw45 VOD Archive';
     }
