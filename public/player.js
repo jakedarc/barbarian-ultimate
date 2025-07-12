@@ -528,7 +528,11 @@ class VODArchive {
         this.player = videojs('videoPlayer', {
             fluid: true,
             responsive: true,
-            aspectRatio: '16:9'
+            aspectRatio: '16:9',
+            spacialNavigation: {
+                enabled: true,
+                horizontalSeek: true
+            }
         });
 
         this.setupVideoPositionTracking(videoId);

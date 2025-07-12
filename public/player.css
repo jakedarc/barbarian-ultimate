@@ -29,8 +29,9 @@ a:hover {
 
 /* Video Section */
 .video-section {
+    max-width: 1200px;
     position: relative;
-    margin-bottom: 30px;
+    margin: 0 auto 30px auto;
     display: flex;
     gap: 0;
     align-items: flex-start;
@@ -38,7 +39,7 @@ a:hover {
 
 .video-container {
     width: 100%;
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
     background: #111;
     border-radius: 8px;
@@ -151,10 +152,9 @@ a:hover {
     font-style: italic;
 }
 
-.video-section.chat-open {
-    max-width: none;
+/* .video-section.chat-open {
     margin: 0 auto 30px auto;
-}
+} */
 
 .video-section.chat-open .video-container {
     /* Keep video centered within its flex container */
