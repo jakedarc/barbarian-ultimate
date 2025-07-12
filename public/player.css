@@ -32,7 +32,7 @@ a:hover {
     position: relative;
     margin-bottom: 30px;
     display: flex;
-    gap: 20px;
+    gap: 0;
 }
 
 .video-container {
@@ -169,7 +169,8 @@ a:hover {
 }
 
 .video-section.chat-open .video-container {
-    margin: 0;
+    /* Keep video centered within its flex container */
+    margin: 0 auto;
 }
 
 .video-js {
@@ -693,8 +694,14 @@ a:hover {
 }
 
 .chat-drawer-toggle.chat-open {
-    background: #3a3a3a;
-    border-color: #666;
+    background: #69f;
+    border-color: #69f;
+    box-shadow: 0 0 8px rgba(102, 153, 255, 0.4);
+}
+
+.chat-drawer-toggle.chat-open .chat-drawer-icon::before,
+.chat-drawer-toggle.chat-open .chat-drawer-icon::after {
+    background: #fff;
 }
 
 /* Chat icon - simple person symbol */
@@ -741,21 +748,13 @@ a:hover {
     position: relative;
 }
 
-/* Smooth chat sidebar animations */
-.chat-sidebar {
-    transition: all 0.3s ease;
-    transform: translateX(100%);
-    opacity: 0;
-}
-
-.chat-sidebar.show {
-    transform: translateX(0);
-    opacity: 1;
-}
-
 /* Adjust video container positioning when chat is open */
 .video-section.chat-open .video-container {
-    transition: all 0.3s ease;
+    /* Ensure video stays centered when resizing */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Responsive adjustments */
