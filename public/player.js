@@ -477,7 +477,7 @@ class VODArchive {
         document.title = `Macaw45 VOD Archive: ${video.title}`;
 
         document.getElementById('videoTitle').textContent = video.title;
-        document.getElementById('videoSource').innerHTML = `originally from <a href="https://twitch.tv/videos/${videoId}" target="_blank">twitch.tv/videos/${videoId}</a>`;
+        document.getElementById('videoSource').innerHTML = `Originally from <a href="https://twitch.tv/videos/${videoId}" target="_blank">https://twitch.tv/videos/${videoId}</a>`;
         document.getElementById('videoDate').textContent = video.date.toLocaleDateString('en-US', { 
             year: 'numeric', 
             month: 'long', 
