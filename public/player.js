@@ -517,6 +517,8 @@ class VODArchive {
         newVideoElement.setAttribute('preload', 'auto');
         newVideoElement.setAttribute('data-setup', '{}');
         newVideoElement.setAttribute('poster', `/api/thumbnail/720/${videoId}`);
+        newVideoElement.setAttribute('tabindex', '0');
+        newVideoElement.setAttribute('aria-label', 'Video Player');
 
         videoContainer.appendChild(newVideoElement);
 
@@ -528,15 +530,88 @@ class VODArchive {
         this.player = videojs('videoPlayer', {
             fluid: true,
             responsive: true,
-            aspectRatio: '16:9',
-            spacialNavigation: {
-                enabled: true,
-                horizontalSeek: true
-            }
+            aspectRatio: '16:9'
         });
 
         this.setupVideoPositionTracking(videoId);
         this.setupVideoTimeTracking(this.player, videoId);
+        
+        // Ensure video player gets focus when clicked for keyboard controls
+        this.player.ready(() => {
+            const playerEl = this.player.el();
+            const videoEl = playerEl.querySelector('video');
+            
+            // Make both the player container and video element focusable
+            playerEl.setAttribute('tabindex', '0');
+            if (videoEl) {
+                videoEl.setAttribute('tabindex', '0');
+            }
+            
+            // Add click handlers to set focus
+            playerEl.addEventListener('click', (e) => {
+                console.log('Player clicked, setting focus');
+                playerEl.focus();
+                if (videoEl) {
+                    videoEl.focus();
+                }
+            });
+            
+            // Also try focusing on the video element directly
+            if (videoEl) {
+                videoEl.addEventListener('click', (e) => {
+                    console.log('Video element clicked, setting focus');
+                    videoEl.focus();
+                    e.stopPropagation();
+                });
+            }
+            
+            // Add manual keyboard event handlers as fallback
+            document.addEventListener('keydown', (e) => {
+                // Only handle keys when video player or its elements are focused
+                const activeElement = document.activeElement;
+                
+                // Check if the video player or any of its child elements are focused
+                const isVideoPlayerFocused = activeElement && (
+                    activeElement === playerEl ||
+                    activeElement === videoEl ||
+                    playerEl.contains(activeElement)
+                );
+                
+                // Only handle keyboard events if video player is focused
+                if (!isVideoPlayerFocused) return;
+                
+                switch(e.code) {
+                    case 'Space':
+                        e.preventDefault();
+                        if (this.player.paused()) {
+                            this.player.play();
+                        } else {
+                            this.player.pause();
+                        }
+                        break;
+                    case 'ArrowLeft':
+                        e.preventDefault();
+                        this.player.currentTime(this.player.currentTime() - 10);
+                        break;
+                    case 'ArrowRight':
+                        e.preventDefault();
+                        this.player.currentTime(this.player.currentTime() + 10);
+                        break;
+                    case 'KeyM':
+                        e.preventDefault();
+                        this.player.muted(!this.player.muted());
+                        break;
+                    case 'KeyF':
+                        e.preventDefault();
+                        if (this.player.isFullscreen()) {
+                            this.player.exitFullscreen();
+                        } else {
+                            this.player.requestFullscreen();
+                        }
+                        break;
+                }
+            });
+        });
 
         this.player.ready(() => {
             this.player.src({
