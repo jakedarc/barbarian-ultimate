@@ -544,10 +544,8 @@ class VODArchive {
             setTimeout(() => this.syncChatSidebarHeight(), 200);
         });
 
-        if (this.chatOpen) {
-            this.loadChatTimecodes(videoId);
-            // Don't load messages until play starts
-        }
+        // Always load chat timecodes when video loads
+        this.loadChatTimecodes(videoId);
 
         // Create chat toggle button if no start over button exists
         if (!this.startOverBtn) {
@@ -754,7 +752,7 @@ class VODArchive {
                 history.replaceState({}, '', `#${videoId}?t=${currentTime}`);
                 
                 // Load and display messages for this second if we haven't already
-                if (hasStartedPlaying && this.chatOpen && currentTime !== lastDisplayedSecond) {
+                if (hasStartedPlaying && currentTime !== lastDisplayedSecond) {
                     this.loadAndDisplayChatForSecond(videoId, currentTime);
                     lastDisplayedSecond = currentTime;
                 }
@@ -765,7 +763,7 @@ class VODArchive {
         
         player.on('seeked', () => {
             const currentTime = Math.floor(player.currentTime());
-            if (hasStartedPlaying && this.chatOpen) {
+            if (hasStartedPlaying) {
                 // Clear chat and load messages for the new position
                 const chatMessages = document.getElementById('chatMessages');
                 chatMessages.innerHTML = '';
@@ -837,13 +835,7 @@ class VODArchive {
         // Sync chat sidebar height to match video container
         setTimeout(() => this.syncChatSidebarHeight(), 50);
         
-        // Clear any existing loading text
-        const chatMessages = document.getElementById('chatMessages');
-        chatMessages.innerHTML = '';
-        
-        if (this.currentVideo && this.player) {
-            this.loadChatTimecodes(this.currentVideo.id);
-        }
+        // Chat timecodes are already loaded when video loads
     }
 
     closeChat() {
@@ -978,7 +970,7 @@ class VODArchive {
         }
         messageDiv.appendChild(username);
         
-        // Add colon separator (no space before colon)
+        // Add colon separator
         const colon = document.createElement('span');
         colon.className = 'colon';
         colon.textContent = ': ';
