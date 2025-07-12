@@ -257,6 +257,8 @@ class VODArchive {
 
         window.addEventListener('resize', () => {
             this.updatePagination();
+            // Sync chat sidebar height on resize
+            setTimeout(() => this.syncChatSidebarHeight(), 100);
         });
     }
 
@@ -537,6 +539,9 @@ class VODArchive {
                 src: `/api/video/${videoId}`,
                 type: 'application/x-mpegURL'
             });
+            
+            // Sync chat sidebar height when player is ready
+            setTimeout(() => this.syncChatSidebarHeight(), 200);
         });
 
         if (this.chatOpen) {
@@ -638,6 +643,11 @@ class VODArchive {
         };
 
         player.on('loadedmetadata', onMetadataLoaded);
+        
+        // Sync chat sidebar height when video metadata loads
+        player.on('loadedmetadata', () => {
+            setTimeout(() => this.syncChatSidebarHeight(), 100);
+        });
 
         player.on('play', () => {
             if (this.shouldResume && !this.hasResumed) {
@@ -824,6 +834,9 @@ class VODArchive {
             chatToggleBtn.classList.add('chat-open');
         }
         
+        // Sync chat sidebar height to match video container
+        setTimeout(() => this.syncChatSidebarHeight(), 50);
+        
         // Clear any existing loading text
         const chatMessages = document.getElementById('chatMessages');
         chatMessages.innerHTML = '';
@@ -884,6 +897,16 @@ class VODArchive {
     createChatDrawerToggle() {
         // This method is no longer used but kept for compatibility
         return null;
+    }
+    
+    syncChatSidebarHeight() {
+        const videoContainer = document.getElementById('videoContainer');
+        const chatSidebar = document.getElementById('chatSidebar');
+        
+        if (videoContainer && chatSidebar && this.chatOpen) {
+            const videoHeight = videoContainer.offsetHeight;
+            chatSidebar.style.height = `${videoHeight}px`;
+        }
     }
 
     async loadChatTimecodes(videoId) {
